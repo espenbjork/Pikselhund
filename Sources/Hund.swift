@@ -6,6 +6,7 @@ final class Hundevisning: NSView {
 
     enum Sinnstilstand: String {
         case sitter, tigger, sover, mage, gaar, snurrer, bukker, ball
+        case henter, hundehus
     }
 
     private static let halerammer = ["hale-ned", "hale-midt", "hale-opp", "hale-midt"]
@@ -17,8 +18,17 @@ final class Hundevisning: NSView {
     private static let vekkeavstand: CGFloat = 210
     /// Innenfor denne avstanden lener hunden seg mot pekeren.
     private static let lenegrense: CGFloat = 95
-    /// Gangfart i punkter per sekund.
+    /// Gangfart i punkter per sekund. Løpefart når den henter ball.
     private static let gangfart: CGFloat = 34
+    private static let loepefart: CGFloat = 260
+    private static let tyngde: CGFloat = 3000
+    /// Vindustopper ligger typisk 250 til 800 punkter over skrivebordsgulvet,
+    /// altså langt over det et fysisk troverdig hopp rekker. Hoppet beregnes
+    /// derfor ut fra hvor høyt den faktisk skal, som i et plattformspill.
+    private static let hoppehoyde: CGFloat = 620
+    private static func fartForHopp(_ hoyde: CGFloat) -> CGFloat {
+        sqrt(2 * tyngde * max(60, min(hoyde + 40, hoppehoyde)))
+    }
 
     private let piksler: Piksler
     private var bildebuffer: [String: NSImage] = [:]
@@ -89,6 +99,25 @@ final class Hundevisning: NSView {
 
     // Ball
     private var ballPaaBakken = false
+
+    // Løping over skjermen, med tyngdekraft og vinduer som plattformer
+    private var maalPunkt: NSPoint?
+    private var vedFramme: (() -> Void)?
+    private var fartOpp: CGFloat = 0
+    private var paaFlate: CGFloat?
+    private var flater: [Vindusflater.Flate] = []
+    private var flateTid: Double = 0
+    private var harBall = false
+    private var hentFrist: Double = 0
+    private var hjemPunkt: NSPoint = .zero
+    private var synlighet: CGFloat = 1
+    private let sporer = CommandLine.arguments.contains("--spor")
+    private var sporTid: Double = 0
+
+    /// Vinduslaget under løpingen: sant når hunden skal ligge foran vinduene.
+    var settNivaUnderveis: ((Bool) -> Void)?
+    /// Kalles når ballen er nådd, så ballvinduet kan skjules.
+    var vedBallTatt: (() -> Void)?
 
     // Retning og musepeker
     private var vendtSelv = false
@@ -200,6 +229,9 @@ final class Hundevisning: NSView {
         case .gaar:
             gaaTur(dt)
 
+        case .henter, .hundehus:
+            loepMot(dt)
+
         case .sitter:
             if stille > Hundevisning.sovegrense { sovne(); return }
             if poteRest == 0 && slikkeRest == 0 && tid > nesteMas { mas() }
@@ -308,6 +340,207 @@ final class Hundevisning: NSView {
         }
     }
 
+    /// Henter en ball som er kastet et sted på skjermen. Hunden løper dit,
+    /// hopper opp på vinduer som er i veien, og kommer tilbake med den.
+    func hentKastetBall(_ punkt: NSPoint) {
+        guard let vindu = window else { return }
+        // Sikrer at hunden starter på gulvet, ikke under det.
+        let gulv = gulvet(vindu)
+        if vindu.frame.minY < gulv {
+            vindu.setFrameOrigin(NSPoint(x: vindu.frame.minX, y: gulv))
+        }
+        hjemPunkt = vindu.frame.origin
+        maalPunkt = punkt
+        harBall = false
+        hentFrist = tid + 30
+        vedFramme = { [weak self] in self?.tokBallen() }
+        startLoep(.henter)
+    }
+
+    /// Går og legger seg i hundehuset. Når den er inne, er programmet ferdig.
+    func gaaTilHuset(_ punkt: NSPoint, ferdig: @escaping () -> Void) {
+        guard window != nil else { ferdig(); return }
+        maalPunkt = punkt
+        harBall = false
+        hentFrist = tid + 30
+        vedFramme = { [weak self] in
+            guard let self else { return }
+            self.vedFramme = nil
+            self.maalPunkt = nil
+            self.gaarInn = true
+            self.innTil = self.tid + 0.9
+            self.ferdigIHuset = ferdig
+        }
+        startLoep(.hundehus)
+    }
+
+    private var gaarInn = false
+    private var innTil: Double = 0
+    private var ferdigIHuset: (() -> Void)?
+
+    private func startLoep(_ ny: Sinnstilstand) {
+        tilstand = ny
+        paaFlate = nil
+        fartOpp = 0
+        flateTid = 0
+        synlighet = 1
+        gaarInn = false
+        zListe.removeAll()
+    }
+
+    private func gulvet(_ vindu: NSWindow) -> CGFloat {
+        let skjerm = NSScreen.screens.first { $0.frame.intersects(vindu.frame) } ?? NSScreen.main
+        return (skjerm?.visibleFrame.minY ?? 0) + 12
+    }
+
+    private func alleFlater(_ vindu: NSWindow) -> [Vindusflater.Flate] {
+        let gulv = gulvet(vindu)
+        let bredde = NSScreen.screens.reduce(NSRect.zero) { $0.union($1.frame) }
+        return flater + [Vindusflater.Flate(y: gulv, x0: bredde.minX - 50, x1: bredde.maxX + 50)]
+    }
+
+    private func loepMot(_ dt: Double) {
+        guard let vindu = window else { tilstand = .sitter; return }
+
+        if gaarInn {
+            // Siste bit: hunden toner ut i døra, så avslutter programmet.
+            synlighet = max(0, CGFloat((innTil - tid) / 0.9))
+            if tid > innTil {
+                let ferdig = ferdigIHuset
+                ferdigIHuset = nil
+                ferdig?()
+            }
+            return
+        }
+
+        if tid > flateTid {
+            flater = Vindusflater.naa(utenomPid: Int(ProcessInfo.processInfo.processIdentifier))
+            flateTid = tid + 0.4
+        }
+
+        if tid > hentFrist && !harBall {
+            // Ga opp. Ballen blir liggende, hunden går hjem.
+            vedBallTatt?()
+            tokBallen()
+        }
+
+        let ramme = vindu.frame
+        let midt = ramme.midX
+        let fot = ramme.minY
+        let mal = maalPunkt ?? NSPoint(x: hjemPunkt.x + ramme.width / 2, y: hjemPunkt.y)
+
+        if sporer && tid > sporTid {
+            sporTid = tid + 0.25
+            print(String(format: "spor x=%.0f y=%.0f flate=%.0f mal=%.0f,%.0f ball=%@",
+                         midt, fot, paaFlate ?? -1, mal.x, mal.y, harBall ? "ja" : "nei"))
+            fflush(stdout)
+        }
+        let flateliste = alleFlater(vindu)
+
+        // Er målet høyere enn der vi står, sikter vi mot en flate å hoppe opp på.
+        var sikteX = mal.x
+        var villHoppe = false
+        var hoppTil: CGFloat = 0
+        if let staar = paaFlate, mal.y > staar + 26 {
+            // Flater innen rekkevidde, som også bringer oss nærmere målet.
+            let mulige = flateliste.filter {
+                $0.y > staar + 14 && $0.y <= staar + Hundevisning.hoppehoyde && $0.y <= mal.y + 40
+            }
+            let valgt = mulige.min { a, b in
+                let da = abs(min(max(mal.x, a.x0), a.x1) - mal.x)
+                let db = abs(min(max(mal.x, b.x0), b.x1) - mal.x)
+                return da == db ? a.y > b.y : da < db
+            }
+            if let valgt {
+                sikteX = min(max(mal.x, valgt.x0 + 24), valgt.x1 - 24)
+                villHoppe = abs(midt - sikteX) < 26
+                hoppTil = valgt.y - staar
+            } else {
+                // Ingen flate å lande på. Da hopper den rett opp etter ballen.
+                sikteX = mal.x
+                villHoppe = abs(midt - mal.x) < 26
+                hoppTil = mal.y - staar
+            }
+        }
+
+        // Vannrett
+        let dx = sikteX - midt
+        let fart: CGFloat = abs(dx) < 8 ? 0 : (dx < 0 ? -Hundevisning.loepefart : Hundevisning.loepefart)
+        if fart != 0 { vendtSelv = fart < 0 }
+        var nyX = ramme.minX + fart * CGFloat(dt)
+
+        // Loddrett
+        var nyY = fot
+        if let staar = paaFlate {
+            nyY = staar
+            fartOpp = 0
+            if villHoppe {
+                fartOpp = Hundevisning.fartForHopp(hoppTil)
+                paaFlate = nil
+            } else if !flateliste.contains(where: { abs($0.y - staar) < 1.5 && $0.under(nyX + ramme.width / 2) }) {
+                paaFlate = nil          // gikk utfor kanten
+            }
+        }
+        if paaFlate == nil {
+            fartOpp -= Hundevisning.tyngde * CGFloat(dt)
+            nyY = fot + fartOpp * CGFloat(dt)
+            if fartOpp <= 0 {
+                let senter = nyX + ramme.width / 2
+                let landing = flateliste
+                    .filter { $0.under(senter) && fot >= $0.y - 1 && nyY <= $0.y }
+                    .map(\.y).max()
+                if let y = landing { nyY = y; fartOpp = 0; paaFlate = y }
+            }
+            // Gulvet er hardt. Uten dette faller hunden ut av skjermen hvis
+            // den starter under gulvhøyden, for eksempel etter at en skjerm
+            // er koblet til og den lagrede posisjonen ikke lenger gjelder.
+            let gulvNa = gulvet(vindu)
+            if nyY < gulvNa { nyY = gulvNa; fartOpp = 0; paaFlate = gulvNa }
+        }
+
+        let vidde = NSScreen.screens.reduce(NSRect.zero) { $0.union($1.frame) }
+        nyX = min(max(nyX, vidde.minX), vidde.maxX - ramme.width)
+        vindu.setFrameOrigin(NSPoint(x: nyX, y: nyY))
+
+        // Hunden ligger bak vinduene når den løper på gulvet, og foran når den
+        // er i lufta eller står oppå et vindu. Det er slik den kommer seg
+        // mellom, over og under dem.
+        let gulv = gulvet(vindu)
+        settNivaUnderveis?(paaFlate == nil || (paaFlate ?? gulv) > gulv + 4)
+
+        if abs(vindu.frame.midX - mal.x) < 20 && abs(vindu.frame.minY - mal.y) < 70 {
+            let naa = vedFramme
+            if harBall || tilstand == .hundehus { vedFramme = nil }
+            naa?()
+        }
+    }
+
+    private func tokBallen() {
+        if !harBall {
+            harBall = true
+            vedBallTatt?()
+            hentFrist = tid + 30
+            maalPunkt = nil                       // nå er målet hjem
+            vedFramme = { [weak self] in self?.kommetHjem() }
+        } else {
+            kommetHjem()
+        }
+    }
+
+    private func kommetHjem() {
+        harBall = false
+        vedFramme = nil
+        maalPunkt = nil
+        paaFlate = nil
+        settNivaUnderveis?(true)
+        (window as? Hundevindu)?.gjenopprettNiva()
+        (window as? Hundevindu)?.lagrePosisjon()
+        tilstand = .ball
+        ballPaaBakken = true
+        handlingTil = tid + 9
+        bliGlad()
+    }
+
     func leikebukk() {
         tilstand = .bukker
         handlingTil = tid + 2.2
@@ -356,7 +589,7 @@ final class Hundevisning: NSView {
 
     private func folgMusa(dx: CGFloat, avstand: CGFloat) {
         // Positurer der hodet ikke er vendt mot skjermen har ikke blikk.
-        let bortvendt: Set<Sinnstilstand> = [.sover, .gaar, .snurrer, .bukker, .mage]
+        let bortvendt: Set<Sinnstilstand> = [.sover, .gaar, .snurrer, .bukker, .mage, .henter, .hundehus]
         guard !bortvendt.contains(tilstand) else { blikk = 0; lening = 0; return }
         let retning: CGFloat = speilvendt ? -1 : 1
         blikk = abs(dx) < 30 ? 0 : (dx * retning < 0 ? -1 : 1)
@@ -416,9 +649,10 @@ final class Hundevisning: NSView {
             if slikkeRest == 0 { slikkerNa = false }
         }
 
-        if tilstand == .gaar && gaaFase != 1 {
+        let gaar = (tilstand == .gaar && gaaFase != 1)
+        if gaar || tilstand == .henter || tilstand == .hundehus {
             gaaTid += dt
-            if gaaTid > 0.16 {
+            if gaaTid > (gaar ? 0.16 : 0.09) {
                 gaaTid = 0
                 gaaIndeks = (gaaIndeks + 1) % Hundevisning.gangrammer.count
             }
@@ -485,6 +719,10 @@ final class Hundevisning: NSView {
             return [Hundevisning.snurrerammer[snurrIndeks % Hundevisning.snurrerammer.count]]
         case .bukker:
             return ["leikebukk"]
+        case .henter, .hundehus:
+            var ut = [paaFlate == nil ? "profil-gaa1" : Hundevisning.gangrammer[gaaIndeks]]
+            if harBall { ut.append("profil-ball") }
+            return ut
         default:
             break
         }
@@ -519,6 +757,7 @@ final class Hundevisning: NSView {
             let fremdrift = 1 - hoppRest / hoppLengde
             return CGFloat(sin(fremdrift * .pi) * 5)
         }
+        if tilstand == .henter || tilstand == .hundehus { return 0 }
         if tilstand == .gaar && gaaFase == 1 { return sin(tid * 11) > 0 ? 1 : 0 }
         return sin(tid * 1.5) > 0.75 ? 1 : 0
     }
@@ -550,7 +789,7 @@ final class Hundevisning: NSView {
         let y = loft() * skala
         let x = (lening + vrikk()) * skala
 
-        tegn(hundebilde(), x: x, y: y, bredde: bredde, hoyde: hoyde, alfa: 1)
+        tegn(hundebilde(), x: x, y: y, bredde: bredde, hoyde: hoyde, alfa: synlighet)
 
         for h in hjerter {
             let alfa = h.alder < 0.2 ? h.alder / 0.2 : max(0, 1 - (h.alder - 0.2) / 1.2)
@@ -583,9 +822,12 @@ final class Hundevisning: NSView {
 
     override func mouseDown(with event: NSEvent) {
         // Å ta tak i hunden avbryter en tur eller en snurring.
-        if tilstand == .gaar || tilstand == .snurrer {
+        if tilstand == .gaar || tilstand == .snurrer || tilstand == .henter {
+            if tilstand == .henter { vedBallTatt?(); (window as? Hundevindu)?.gjenopprettNiva() }
             tilstand = .sitter
             vendtSelv = false
+            harBall = false
+            vedFramme = nil
         }
         dragStart = NSEvent.mouseLocation
         vindusStart = window?.frame.origin
@@ -690,12 +932,17 @@ final class Hundevindu: NSWindow {
 
     private let piksler: Piksler
     private let godbit: Godbitvindu
+    private let ballen: Rekvisittvindu
+    private let huset: Rekvisittvindu
+    private let kastet = Kastevindu()
     private var klarTilAaLagre = false
 
     init(piksler: Piksler) {
         self.piksler = piksler
         self.visning = Hundevisning(piksler: piksler)
         self.godbit = Godbitvindu(piksler: piksler, skala: Innstillinger.skala)
+        self.ballen = Rekvisittvindu(piksler: piksler, ramme: "ball-alene", skala: Innstillinger.skala)
+        self.huset = Rekvisittvindu(piksler: piksler, ramme: "hundehus", skala: Innstillinger.skala)
         super.init(contentRect: NSRect(x: 0, y: 0, width: 100, height: 100),
                    styleMask: [.borderless], backing: .buffered, defer: false)
 
@@ -711,6 +958,18 @@ final class Hundevindu: NSWindow {
 
         visning.vedTikk = { [weak self] dt in self?.godbit.tikk(dt) }
         visning.barGodbit = { [weak self] in self?.godbit.vis() }
+        visning.vedBallTatt = { [weak self] in self?.ballen.orderOut(nil) }
+        visning.settNivaUnderveis = { [weak self] foran in
+            guard let self else { return }
+            self.level = foran
+                ? .floating
+                : NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopIconWindow)) + 1)
+        }
+        kastet.vedKlikk = { [weak self] punkt in
+            self?.kastet.skjul()
+            self?.kastTil(punkt)
+        }
+        kastet.vedAvbrudd = { [weak self] in self?.kastet.skjul() }
 
         // Rekkefølgen betyr noe: settSkala lagrer posisjon, og gjør den det
         // før plasser() har kjørt, arver hunden vindusrammens startpunkt i
@@ -739,11 +998,47 @@ final class Hundevindu: NSWindow {
         visning.skala = ny
         Innstillinger.skala = ny
         godbit.settSkala(ny)
+        ballen.settSkala(ny)
+        huset.settSkala(ny)
         setContentSize(storrelse)
         setFrameOrigin(NSPoint(x: gammelMidt - storrelse.width / 2, y: gammelBunn))
         holdInnenforSkjerm()
         lagrePosisjon()
     }
+
+    /// Ber om et klikk, og kaster ballen dit.
+    func kastBallen() { kastet.vis() }
+
+    /// Legger ballen i et punkt og sender hunden av gårde.
+    func kastTil(_ punkt: NSPoint) {
+        ballen.settSenter(punkt)
+        ballen.alfa = 1
+        ballen.orderFrontRegardless()
+        visning.hentKastetBall(punkt)
+    }
+
+    /// Setter opp hundehuset og sender hunden inn i det. Når den er inne,
+    /// avslutter appen.
+    func sendIHuset(ferdig: @escaping () -> Void) {
+        let skjerm = NSScreen.screens.first { $0.frame.intersects(frame) } ?? NSScreen.main
+        guard let synlig = skjerm?.visibleFrame else { ferdig(); return }
+        let gulv = synlig.minY + 12
+        // Huset settes et stykke unna, så hunden faktisk går bort til det.
+        var x = frame.midX + 150
+        if x + huset.frame.width / 2 > synlig.maxX { x = frame.midX - 150 }
+        x = min(max(x, synlig.minX + huset.frame.width / 2), synlig.maxX - huset.frame.width / 2)
+        huset.settFot(x: x, gulv: gulv)
+        huset.alfa = 1
+        // Huset skal ligge foran hunden, ellers ser det ut som om den blir
+        // stående utenfor i stedet for å gå inn.
+        huset.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
+        huset.orderFrontRegardless()
+        level = .floating
+        visning.gaaTilHuset(NSPoint(x: x, y: gulv), ferdig: ferdig)
+    }
+
+    /// Setter vinduslaget tilbake til det brukeren har valgt.
+    func gjenopprettNiva() { settNiva(Innstillinger.foran) }
 
     func settNiva(_ foran: Bool) {
         Innstillinger.foran = foran

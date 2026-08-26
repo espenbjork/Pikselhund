@@ -36,6 +36,13 @@ final class Delegat: NSObject, NSApplicationDelegate {
                 v.visning.lasTil(positur)
             } else if onsket == "godbit" {
                 v.visGodbitLenge()
+            } else if let k = onsket, k.hasPrefix("kast:") {
+                let tall = k.dropFirst(5).split(separator: ",").compactMap { Double($0) }
+                if tall.count == 2 { v.kastTil(NSPoint(x: tall[0], y: tall[1])) }
+            } else if onsket == "sikte" {
+                v.kastBallen()
+            } else if onsket == "hus" {
+                v.sendIHuset { NSApp.terminate(nil) }
             } else if onsket == "tur" {
                 // Går en tur uten å låses, så gangen kan fotograferes.
                 v.visning.gaaTilfeldig()
@@ -101,6 +108,7 @@ final class Delegat: NSObject, NSApplicationDelegate {
         bevegelsesvalg.submenu = bevegelser
         meny.addItem(bevegelsesvalg)
 
+        meny.addItem(punkt("Kast ballen…", #selector(kastBall), nokkel: ""))
         meny.addItem(punkt("Hent hunden hit", #selector(hentHit), nokkel: ""))
         meny.addItem(.separator())
 
@@ -134,6 +142,7 @@ final class Delegat: NSObject, NSApplicationDelegate {
         meny.addItem(paalogging)
 
         meny.addItem(.separator())
+        meny.addItem(punkt("Send den i hundehuset", #selector(iHuset), nokkel: ""))
         meny.addItem(punkt("Avslutt Pikselhund", #selector(avslutt), nokkel: "q"))
         return meny
     }
@@ -218,6 +227,16 @@ final class Delegat: NSObject, NSApplicationDelegate {
             varsel.runModal()
         }
         byggMenyerPaaNytt()
+    }
+
+    @objc private func kastBall() { vindu?.kastBallen() }
+
+    @objc private func iHuset() {
+        guard let vindu else { NSApp.terminate(nil); return }
+        vindu.sendIHuset { [weak self] in
+            self?.vindu?.lagrePosisjon()
+            NSApp.terminate(nil)
+        }
     }
 
     @objc private func avslutt() {

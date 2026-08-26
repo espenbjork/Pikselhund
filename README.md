@@ -44,6 +44,16 @@ borte, og kommer tilbake dit den sto. Å ta tak i den avbryter turen.
 **Henter ballen.** Kommer med en ball i munnen, legger den fra seg foran deg,
 og venter. Klikker du på hunden mens ballen ligger der, henter den den igjen.
 
+**Henter en kastet ball.** «Kast ballen…» i menyen gir et sikte over hele
+skjermen. Klikk der ballen skal lande, så løper hunden dit, hopper opp på
+vinduene som er i veien, går bortover toppen av dem, og kommer tilbake med
+ballen. Den ligger **bak** vinduene når den løper på skrivebordsgulvet og
+**foran** når den står oppå et vindu, så den kommer seg mellom, over og under
+dem. Ta tak i den for å avbryte.
+
+**Går og legger seg i hundehuset.** «Send den i hundehuset» setter opp et
+hundehus, hunden går bort til det, forsvinner inn, og appen avslutter.
+
 **Tar en leikebukk.** Framparten ned, bakparten i været.
 
 **Ruller over på ryggen.** To klapp tett etter hverandre, så legger den seg
@@ -96,9 +106,11 @@ open build/Pikselhund.app --args --vis tigger
 ```
 
 `--vis` tar `sitter`, `tigger`, `sover`, `mage`, `snurrer`, `bukker`, `ball`
-eller `gaar`, og låser hunden der. `--vis tur`, `--vis vekking` og
-`--vis godbit` låser ikke, de setter i gang den ekte bevegelsen så den kan
-fotograferes.
+eller `gaar`, og låser hunden der. `--vis tur`, `--vis vekking`, `--vis sikte`,
+`--vis hus`, `--vis godbit` og `--vis kast:X,Y` låser ikke, de setter i gang
+den ekte bevegelsen så den kan fotograferes. `--spor` skriver posisjon,
+plattform og mål til stdout hvert kvarte sekund, som er eneste praktiske måte
+å feilsøke hoppingen på.
 
 **Tellere som ruller hver ramme må ligge i animasjonen, ikke i
 tilstandsstyringen.** Låsen i `--vis` skrur av tilstandsstyringen, så en teller
@@ -121,6 +133,7 @@ kopierer det inn hvis det finnes.
 | `Art/pikselhund.txt` | all grafikk, 23 rammer |
 | `Sources/Piksler.swift` | leser tegningen, lager bilder |
 | `Sources/Hund.swift` | vindu, animasjon, mus, innstillinger |
+| `Sources/Leker.swift` | vinduer som plattformer, ball, sikte, hundehus |
 | `Sources/App.swift` | menylinje og meny |
 | `tools/forhandsvis.py` | rammene som PNG |
 | `tools/lag-ikon.py` | app-ikonet |
