@@ -36,6 +36,9 @@ final class Delegat: NSObject, NSApplicationDelegate {
                 v.visning.lasTil(positur)
             } else if onsket == "godbit" {
                 v.visGodbitLenge()
+            } else if onsket == "tur" {
+                // Går en tur uten å låses, så gangen kan fotograferes.
+                v.visning.gaaTilfeldig()
             } else if onsket == "vekking" {
                 // Legger den til å sove uten å låse den, så den ekte
                 // vekkeutløseren fortsatt gjelder.
@@ -81,9 +84,23 @@ final class Delegat: NSObject, NSApplicationDelegate {
         meny.autoenablesItems = false
 
         meny.addItem(punkt("Klapp hunden", #selector(klapp), nokkel: ""))
-        meny.addItem(punkt("Be den tigge", #selector(tigg), nokkel: ""))
-        meny.addItem(punkt("Be om poteklapp", #selector(poteklapp), nokkel: ""))
-        meny.addItem(punkt("Legg den til å sove", #selector(leggDeg), nokkel: ""))
+
+        let bevegelser = NSMenu()
+        for (navn, handling) in [("Klappe med poten", #selector(poteklapp)),
+                                 ("Tigge", #selector(tigg)),
+                                 ("Slikke seg om munnen", #selector(slikke)),
+                                 ("Snurre en runde", #selector(snurre)),
+                                 ("Gå en tur langs kanten", #selector(gaaTur)),
+                                 ("Hente ballen", #selector(ball)),
+                                 ("Ta en leikebukk", #selector(bukk)),
+                                 ("Legge seg på ryggen", #selector(paaRyggen)),
+                                 ("Legge seg til å sove", #selector(leggDeg))] {
+            bevegelser.addItem(punkt(navn, handling, nokkel: ""))
+        }
+        let bevegelsesvalg = NSMenuItem(title: "Be den om noe", action: nil, keyEquivalent: "")
+        bevegelsesvalg.submenu = bevegelser
+        meny.addItem(bevegelsesvalg)
+
         meny.addItem(punkt("Hent hunden hit", #selector(hentHit), nokkel: ""))
         meny.addItem(.separator())
 
@@ -140,6 +157,18 @@ final class Delegat: NSObject, NSApplicationDelegate {
     @objc private func tigg() { vindu?.visning.tigg() }
 
     @objc private func poteklapp() { vindu?.visning.klappMedPoten() }
+
+    @objc private func slikke() { vindu?.visning.slikk() }
+
+    @objc private func snurre() { vindu?.visning.snurr() }
+
+    @objc private func gaaTur() { vindu?.visning.gaaTilfeldig() }
+
+    @objc private func ball() { vindu?.visning.hentBallen() }
+
+    @objc private func bukk() { vindu?.visning.leikebukk() }
+
+    @objc private func paaRyggen() { vindu?.visning.leggDegPaaRyggen() }
 
     @objc private func leggDeg() { vindu?.visning.leggDeg() }
 

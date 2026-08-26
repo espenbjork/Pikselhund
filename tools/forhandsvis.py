@@ -53,12 +53,18 @@ def main():
 
     visninger = [
         ("sitter", ["kropp", "hale-midt", "tunge"]),
-        ("blunk", ["kropp", "hale-midt", "blunk"]),
-        ("blikk venstre", ["kropp", "hale-midt", "blikk-venstre"]),
-        ("blikk hoyre", ["kropp", "hale-midt", "blikk-hoyre"]),
+        ("blikk", ["kropp", "hale-midt", "blikk-venstre"]),
         ("poteklapp", ["kropp", "hale-opp", "pote-opp", "tunge"]),
-        ("tigger", ["kropp", "hale-midt", "tigger", "tunge"]),
+        ("slikker", ["kropp", "hale-opp", "slikk"]),
+        ("tigger", ["tigger", "hale-midt", "tunge"]),
+        ("ballen", ["kropp", "hale-opp", "i-munnen"]),
+        ("ballen ligger", ["kropp", "hale-midt", "ball", "tunge"]),
+        ("bakfra", ["bakfra"]),
+        ("profil", ["profil"]),
+        ("gaar", ["profil-gaa1"]),
+        ("leikebukk", ["leikebukk"]),
         ("sover", ["sover", "zzz"]),
+        ("magekos", ["sover", "mage-vaken"]),
         ("godbit", ["godbit"]),
     ]
 

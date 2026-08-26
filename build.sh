@@ -13,6 +13,22 @@ echo "==> Rydder"
 rm -rf "$APP"
 mkdir -p "$MACOS" "$RES"
 
+echo "==> Sjekker tegningen"
+python3 - "$HERE/Art/pikselhund.txt" <<'SJEKK'
+import re, sys
+tekst = open(sys.argv[1], encoding="utf-8").read()
+feil = [(n, len(b.rstrip("\n").split("\n")))
+        for n, b in re.findall(r"ramme (\S+)\n((?:  [^\n]*\n)+)", tekst)
+        if len(b.rstrip("\n").split("\n")) != 32]
+feil += [(n, "skjev rad") for n, b in re.findall(r"ramme (\S+)\n((?:  [^\n]*\n)+)", tekst)
+         if any(len(r.strip()) != 32 for r in b.rstrip("\n").split("\n"))]
+if feil:
+    for navn, hva in feil:
+        print(f"   FEIL: ramme '{navn}': {hva}")
+    sys.exit(1)
+print(f"   {len(re.findall(r'^ramme ', tekst, re.M))} rammer, alle 32x32")
+SJEKK
+
 echo "==> Kompilerer Swift"
 swiftc -O -swift-version 5 -parse-as-library \
   -framework AppKit -framework ServiceManagement \

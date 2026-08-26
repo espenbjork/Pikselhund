@@ -31,8 +31,26 @@ hunder flest mener det er mat.
 
 **Sover.** Etter halvannet minutt uten mus eller tastatur legger den seg på
 ryggen med potene rett opp og z-er over hodet. Kommer musepekeren nærmere enn
-210 punkter mens den sover, kommer pekeren med en godbit, og hunden våkner og
-tigger.
+210 punkter mens den sover, kommer pekeren med en godbit, og hunden strekker
+seg og våkner.
+
+**Slikker seg om munnen.** Tunga opp over nesa, tre svip.
+
+**Snurrer en runde.** Veksler mellom forfra og bakfra, som når den vil ut.
+
+**Går en tur.** Reiser seg, går i profil bortover skjermkanten, snuser der
+borte, og kommer tilbake dit den sto. Å ta tak i den avbryter turen.
+
+**Henter ballen.** Kommer med en ball i munnen, legger den fra seg foran deg,
+og venter. Klikker du på hunden mens ballen ligger der, henter den den igjen.
+
+**Tar en leikebukk.** Framparten ned, bakparten i været.
+
+**Ruller over på ryggen.** To klapp tett etter hverandre, så legger den seg
+på ryggen og vrikker for magekos.
+
+**«Reduser bevegelse».** Er den skrudd på i systeminnstillingene, sitter hunden
+helt stille med tunga inne. Den forsvinner ikke, den slutter bare å røre seg.
 
 Høyreklikk gir samme meny som labben i menylinja: be den tigge, be om
 poteklapp, legge seg, størrelse, foran eller bak vinduene, speilvending, klikk
@@ -68,7 +86,8 @@ python3 tools/forhandsvis.py && open forhandsvisning.png
 ```
 
 Rammene må være like store, ellers nekter appen å starte og sier hvilken ramme
-som er skjev.
+som er skjev. `build.sh` sjekker det samme **før** den kompilerer, så en skjev
+ramme stopper bygget i stedet for å gi en app som ikke starter.
 
 For å fotografere en enkelt positur uten å vente på at den skal skje:
 
@@ -76,7 +95,15 @@ For å fotografere en enkelt positur uten å vente på at den skal skje:
 open build/Pikselhund.app --args --vis tigger
 ```
 
-`--vis` tar `sitter`, `tigger` eller `sover`, og låser hunden der.
+`--vis` tar `sitter`, `tigger`, `sover`, `mage`, `snurrer`, `bukker`, `ball`
+eller `gaar`, og låser hunden der. `--vis tur`, `--vis vekking` og
+`--vis godbit` låser ikke, de setter i gang den ekte bevegelsen så den kan
+fotograferes.
+
+**Tellere som ruller hver ramme må ligge i animasjonen, ikke i
+tilstandsstyringen.** Låsen i `--vis` skrur av tilstandsstyringen, så en teller
+som ligger der stopper, og posituren ser død ut. Feilen er gjort tre ganger i
+dette prosjektet: poteklapp, z-er og gangrammer.
 
 ## Ikonet
 
@@ -91,7 +118,7 @@ kopierer det inn hvis det finnes.
 
 | fil | hva |
 |---|---|
-| `Art/pikselhund.txt` | all grafikk |
+| `Art/pikselhund.txt` | all grafikk, 23 rammer |
 | `Sources/Piksler.swift` | leser tegningen, lager bilder |
 | `Sources/Hund.swift` | vindu, animasjon, mus, innstillinger |
 | `Sources/App.swift` | menylinje og meny |
