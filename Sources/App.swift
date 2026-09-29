@@ -13,10 +13,13 @@ enum Pikselhund {
     }
 }
 
-final class Delegat: NSObject, NSApplicationDelegate {
+final class Delegat: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private var vindu: Hundevindu?
     private var menylinje: NSStatusItem?
+    private var kvotevalg: NSMenuItem?
+    private var kvotemeny: NSMenu?
+    private var linjeklokke: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let fil = Bundle.main.url(forResource: "pikselhund", withExtension: "txt") else {
@@ -65,6 +68,14 @@ final class Delegat: NSObject, NSApplicationDelegate {
         element.menu = byggMeny()
         menylinje = element
 
+        // Prosenten står i selve menylinja, ikke bare i menyen, så den kan
+        // leses i utkanten av synsfeltet uten å klikke.
+        vindu?.visning.kvotevakt.vedNyeTall = { [weak self] in self?.oppdaterLinje() }
+        oppdaterLinje()
+        let t = Timer(timeInterval: 30, repeats: true) { [weak self] _ in self?.oppdaterLinje() }
+        RunLoop.main.add(t, forMode: .common)
+        linjeklokke = t
+
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main
@@ -89,6 +100,17 @@ final class Delegat: NSObject, NSApplicationDelegate {
     private func byggMeny() -> NSMenu {
         let meny = NSMenu()
         meny.autoenablesItems = false
+
+        // Kvota øverst, fordi det er derfor hunden sitter der.
+        let kvote = NSMenuItem(title: "Kvote", action: nil, keyEquivalent: "")
+        let undermeny = NSMenu()
+        undermeny.delegate = self
+        kvote.submenu = undermeny
+        meny.addItem(kvote)
+        meny.addItem(.separator())
+        kvotevalg = kvote
+        kvotemeny = undermeny
+        meny.delegate = self
 
         meny.addItem(punkt("Klapp hunden", #selector(klapp), nokkel: ""))
 
@@ -152,6 +174,40 @@ final class Delegat: NSObject, NSApplicationDelegate {
         p.target = self
         p.isEnabled = true
         return p
+    }
+
+    private func oppdaterLinje() {
+        guard let k = vindu?.visning.kvotevakt.kvote else { return }
+        menylinje?.button?.title = Kvotetekst.kort(k)
+        kvotevalg?.title = Kvotetekst.sammendrag(k)
+    }
+
+    /// Menyen bygges om idet den åpnes, ellers ville tallene vært fra
+    /// oppstarten. Alderen står ved hvert tall, aldri et tall alene.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard let k = vindu?.visning.kvotevakt.kvote else { return }
+        if menu !== kvotemeny {
+            kvotevalg?.title = Kvotetekst.sammendrag(k)
+            return
+        }
+        menu.removeAllItems()
+        for (tekst, overskrift) in Kvotetekst.linjer(k) {
+            let p = NSMenuItem(title: tekst, action: nil, keyEquivalent: "")
+            p.isEnabled = false
+            if overskrift {
+                p.attributedTitle = NSAttributedString(
+                    string: tekst,
+                    attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)])
+            }
+            menu.addItem(p)
+        }
+        if let lest = k.lest {
+            let f = DateFormatter(); f.dateFormat = "HH:mm"
+            let p = NSMenuItem(title: "Avlest \(f.string(from: lest))", action: nil, keyEquivalent: "")
+            p.isEnabled = false
+            menu.addItem(.separator())
+            menu.addItem(p)
+        }
     }
 
     private func byggMenyerPaaNytt() {

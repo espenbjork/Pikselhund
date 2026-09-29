@@ -113,6 +113,7 @@ final class Hundevisning: NSView {
     private var synlighet: CGFloat = 1
     private let sporer = CommandLine.arguments.contains("--spor")
     private var sporTid: Double = 0
+    private var sisteSporetTilstand: Sinnstilstand?
 
     /// Vinduslaget under løpingen: sant når hunden skal ligge foran vinduene.
     var settNivaUnderveis: ((Bool) -> Void)?
@@ -126,6 +127,11 @@ final class Hundevisning: NSView {
     private var sisteKlikk: Double = -10
 
     private var klokke: Timer?
+    private var pauset = false
+    private var vakter: [NSObjectProtocol] = []
+
+    /// Kvota fra forbruksvakt. Hunden leser den, og humøret følger uka.
+    let kvotevakt = Kvotevakt()
 
     init(piksler: Piksler) {
         self.piksler = piksler
@@ -134,11 +140,53 @@ final class Hundevisning: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         start()
+
+        // Sover skjermen, er det ingen som ser hunden. Da er det ingen grunn
+        // til å tegne 24 bilder i sekundet. Den tar fortsatt ingen strømsperre.
+        let nc = NSWorkspace.shared.notificationCenter
+        vakter.append(nc.addObserver(forName: NSWorkspace.screensDidSleepNotification,
+                                     object: nil, queue: .main) { [weak self] _ in
+            self?.settPause(true)
+        })
+        vakter.append(nc.addObserver(forName: NSWorkspace.screensDidWakeNotification,
+                                     object: nil, queue: .main) { [weak self] _ in
+            self?.settPause(false)
+        })
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let v = window else { return }
+        vakter.append(NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification,
+            object: v, queue: .main) { [weak self] _ in
+                guard let self, let w = self.window else { return }
+                self.settPause(!w.occlusionState.contains(.visible))
+            })
+    }
+
+    /// Stopper klokka helt, i stedet for å la den gå og ikke tegne noe.
+    /// En timer som fyrer 24 ganger i sekundet holder prosessoren våken selv
+    /// om den ikke gjør noe.
+    private func settPause(_ paa: Bool) {
+        // En hund midt i et hopp eller en gåtur skal ikke fryse i lufta.
+        if paa, [.henter, .gaar, .hundehus].contains(tilstand) { return }
+        guard pauset != paa else { return }
+        pauset = paa
+        if paa {
+            klokke?.invalidate()
+            klokke = nil
+        } else {
+            start()
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("brukes ikke") }
 
-    deinit { klokke?.invalidate() }
+    deinit {
+        klokke?.invalidate()
+        for v in vakter { NotificationCenter.default.removeObserver(v) }
+    }
 
     // MARK: - Klokka
 
@@ -163,6 +211,16 @@ final class Hundevisning: NSView {
 
     private func tikk(_ dt: Double) {
         tid += dt
+        kvotevakt.tikk()
+
+        if sporer && sisteSporetTilstand != tilstand {
+            sisteSporetTilstand = tilstand
+            let k = kvotevakt.kvote
+            print("spor tilstand=\(tilstand.rawValue) press=\(k.press) "
+                  + "uke=\(k.claude?.uke.samlet.map { String(format: "%.0f", $0) } ?? "?") "
+                  + "5t=\(k.claude?.femTimer.samlet.map { String(format: "%.0f", $0) } ?? "?")")
+            fflush(stdout)
+        }
 
         let varRolig = rolig
         rolig = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -233,6 +291,9 @@ final class Hundevisning: NSView {
             loepMot(dt)
 
         case .sitter:
+            // Er kvota brukt opp, er det ingenting å mase om. Da legger den
+            // seg, men bare når du ikke akkurat har rørt noe.
+            if kvotevakt.kvote.press == .tomt && stille > 20 { sovne(); return }
             if stille > Hundevisning.sovegrense { sovne(); return }
             if poteRest == 0 && slikkeRest == 0 && tid > nesteMas { mas() }
         }
@@ -241,6 +302,21 @@ final class Hundevisning: NSView {
     /// Hunden maser. Rundt måltidene tigger den alltid, ellers trekker den
     /// tilfeldig blant tingene hunder maser om.
     private func mas() {
+        switch kvotevakt.kvote.press {
+        case .tomt:
+            // Ikke mas om noe det ikke er dekning for.
+            nesteMas = tid + 180
+            return
+        case .stramt:
+            // Tigging er den bevegelsen som leser som «noe krever deg».
+            tigg()
+            handlingTil = tid + 4.5
+            nesteMas = tid + Double.random(in: 150...300)
+            return
+        case .rolig:
+            break
+        }
+
         let time = Calendar.current.component(.hour, from: Date())
         let matklokke = [11, 12, 16, 17].contains(time)
 
@@ -936,6 +1012,7 @@ final class Hundevindu: NSWindow {
     private let huset: Rekvisittvindu
     private let kastet = Kastevindu()
     private var klarTilAaLagre = false
+    private var livvakt: Timer?
 
     init(piksler: Piksler) {
         self.piksler = piksler
@@ -981,6 +1058,7 @@ final class Hundevindu: NSWindow {
 
         plasser()
         klarTilAaLagre = true
+        startLivvakt()
         orderFrontRegardless()
     }
 
@@ -1059,10 +1137,27 @@ final class Hundevindu: NSWindow {
         holdInnenforSkjerm()
     }
 
+    /// Går med lav frekvens og passer på at hunden er på en skjerm i det hele
+    /// tatt. Den pauser aldri, i motsetning til animasjonsklokka, fordi en
+    /// hund som havner utenfor skjermen blir usynlig, pauser seg selv, og
+    /// dermed aldri kan redde seg ut igjen.
+    private func startLivvakt() {
+        let t = Timer(timeInterval: 20, repeats: true) { [weak self] _ in
+            self?.holdInnenforSkjerm()
+        }
+        RunLoop.main.add(t, forMode: .common)
+        livvakt = t
+    }
+
     /// Hindrer at hunden blir liggende utenfor kanten, for eksempel etter at
     /// en skjerm er koblet fra.
     func holdInnenforSkjerm() {
-        let skjerm = NSScreen.screens.first { $0.frame.intersects(frame) } ?? NSScreen.main
+        // Krever at vinduet har reell overlapp, ikke bare berører en kant.
+        // Et vindu på en frakoblet skjerm kan ellers se ut som om det er inne.
+        let skjerm = NSScreen.screens.first {
+            let felles = $0.frame.intersection(frame)
+            return felles.width > 20 && felles.height > 20
+        } ?? NSScreen.main
         guard let synlig = skjerm?.visibleFrame else { return }
         var punkt = frame.origin
         punkt.x = min(max(punkt.x, synlig.minX), synlig.maxX - frame.width)
