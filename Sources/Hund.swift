@@ -235,7 +235,7 @@ final class Hundevisning: NSView {
         kvotevakt.tikk()
 
         if sporer {
-            let utseende = (Innstillinger.nyTegning ? spriteramme() : lag().joined(separator: "+"))
+            let utseende = (Innstillinger.nyTegning ? spritelag() : lag()).joined(separator: "+")
                 + String(format: "|%.0f|%.0f", loft() * skala, (lening + vrikk()) * skala)
             if utseende != sisteUtseende { sisteUtseende = utseende; uroTeller += 1 }
             if tid - uroTid >= 5 {
@@ -937,34 +937,74 @@ final class Hundevisning: NSView {
         return kvotevakt.anbefaling.leke
     }
 
-    /// Hvilken ferdig figur som vises i det nye tegnesettet. Det settet har
-    /// ingen lag: blunk, blikk og tunge finnes ikke som egne biter, så de
-    /// faller bort, og posituren velges hel.
-    private func spriteramme() -> String {
-        func hale(_ av: Int) -> Int { 1 + haleIndeks % av }
-        if rolig {
-            return kvotevakt.anbefaling.leke.map { $0 == "lek-claude" ? "sitt-lek-claude-1" : "sitt-lek-codex-1" } ?? "sitt-1"
+    /// Hva som vises i det nye tegnesettet, som en liste av lag.
+    ///
+    /// Den sittende hunden er bygget slik den gamle 32x32-hunden var: én kropp
+    /// som aldri endrer seg, og øyne, munn og leke som egne lag oppå. Da kan
+    /// den blunke og se mot musepekeren med leka i munnen, uten at resten av
+    /// hunden skjelver. De andre posisjonene er fortsatt hele figurer.
+    private func spritelag() -> [String] {
+        func hdLeke(_ l: String?) -> String? {
+            switch l {
+            case "lek-claude": return "hd-leke-claude"
+            case "lek-codex": return "hd-leke-codex"
+            default: return nil
+            }
         }
+        func sittende(leke: String?) -> [String] {
+            var lag = ["hd-kropp"]
+            if tid < blunkerTil {
+                // Halvt lukket inn og ut av blunket, helt lukket midt i.
+                let igjen = blunkerTil - tid
+                lag.append(igjen > 0.09 || igjen < 0.04 ? "hd-oyne-halv" : "hd-oyne-lukket")
+            } else if blikk < 0 {
+                lag.append("hd-oyne-venstre")
+            } else if blikk > 0 {
+                lag.append("hd-oyne-hoyre")
+            }
+            if let leke {
+                lag.append(leke)
+            } else if slikkeRest > 0 {
+                lag.append(slikkerNa ? "hd-munn-slikk-2" : "hd-munn-slikk-1")
+            } else if spenning > 0.4 {
+                // Peser bare når den er ivrig. I ro holder munnen seg stille,
+                // så det eneste som skjer er blunkene.
+                lag.append("hd-munn-pes-\(2 + Int(tid * 7) % 3)")
+            }
+            return lag
+        }
+
+        if rolig { return ["hd-kropp"] + [hdLeke(kvotevakt.anbefaling.leke)].compactMap { $0 } }
         switch tilstand {
-        case .sover:   return "sover-\(1 + Int(tid * 1.5) % 4)"
-        case .mage:    return "mage-\(1 + Int(tid * 1.5) % 4)"
+        // Søvnrammene er tegnet hver for seg, så å bla gjennom dem får hele
+        // hunden til å skjelve. Den ligger stille, og z-ene som stiger er
+        // det som viser at den sover.
+        case .sover:   return ["sover-1"]
+        case .mage:    return ["mage-\(1 + Int(tid * 1.5) % 4)"]
         // Fase 1 er pausen midt på turen, der hunden snuser. Uten dette gikk
         // den på stedet hvil mens den sto stille.
-        case .gaar:    return gaaFase == 1 ? "snus-\(1 + Int(tid) % 2)" : "gaa-\(1 + gaaIndeks % 4)"
-        case .snurrer: return snurrIndeks % 2 == 0 ? "sitt-1" : "bakfra"
-        case .bukker:  return "leikebukk-\(1 + Int(tid * 5) % 4)"
+        case .gaar:    return [gaaFase == 1 ? "snus-\(1 + Int(tid) % 2)" : "gaa-\(1 + gaaIndeks % 4)"]
+        case .snurrer: return [snurrIndeks % 2 == 0 ? "hd-kropp" : "bakfra"]
+        case .bukker:  return ["leikebukk-\(1 + Int(tid * 5) % 4)"]
         case .henter, .hundehus:
-            return (harBall ? "gaa-ball-" : "gaa-") + "\(1 + gaaIndeks % 4)"
-        case .tigger:  return "tigger"
-        case .ball:    return ballPaaBakken ? "sitt-\(hale(4))" : "sitt-ball-\(hale(2))"
-        case .sitter:
-            if let l = lekeramme() {
-                return (l == "lek-claude" ? "sitt-lek-claude-" : "sitt-lek-codex-") + "\(hale(2))"
-            }
-            if slikkerNa { return "slikk" }
-            if poteOppe { return "pote-opp-\(hale(2))" }
-            return "sitt-\(hale(4))"
+            return [(harBall ? "gaa-ball-" : "gaa-") + "\(1 + gaaIndeks % 4)"]
+        case .tigger:  return ["tigger"]
+        // Har den sluppet ballen, ligger den ved potene og venter på et kast.
+        case .ball:    return ballPaaBakken ? sittende(leke: nil) + ["hd-ball-bakke"]
+                                            : sittende(leke: "hd-leke-ball")
+        case .sitter:  return sittende(leke: hdLeke(lekeramme()))
         }
+    }
+
+    /// Skriver det hunden viser akkurat nå til en PNG. Skjermbilder feiler når
+    /// skjermen sover, og `screencapture` har hengt flere ganger, så dette er
+    /// den sikre måten å se hva appen faktisk tegner.
+    func lagreFoto(_ fil: URL) {
+        let bilde = hundebilde()
+        guard let tiff = bilde.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else { return }
+        try? png.write(to: fil)
     }
 
     /// Kalles når tegnesettet byttes, så ingenting gammelt blir stående igjen.
@@ -976,7 +1016,7 @@ final class Hundevisning: NSView {
     }
 
     private func hundebilde() -> NSImage {
-        if Innstillinger.nyTegning, let s = piksler.sprite(spriteramme()) { return s }
+        if Innstillinger.nyTegning, let s = piksler.spritebilde(spritelag()) { return s }
         let lagnavn = lag()
         let nokkel = lagnavn.joined(separator: "+")
         if let ferdig = bildebuffer[nokkel] { return ferdig }

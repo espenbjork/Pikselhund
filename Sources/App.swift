@@ -62,6 +62,14 @@ final class Delegat: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
 
+        // --foto <fil>: skriver hundens bilde til disk etter tre sekunder.
+        if let i = CommandLine.arguments.firstIndex(of: "--foto"), i + 1 < CommandLine.arguments.count {
+            let fil = URL(fileURLWithPath: CommandLine.arguments[i + 1])
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                self?.vindu?.visning.lagreFoto(fil)
+            }
+        }
+
         let element = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         element.button?.image = NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: "Pikselhund")
         element.button?.image?.isTemplate = true

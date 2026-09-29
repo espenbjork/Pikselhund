@@ -88,5 +88,50 @@
    "r2c3": "leke-claude",
    "r2c4": "leke-codex"
   }
+ },
+ "sitte-ansikt": {
+  "fil": "sitte-ansikt.png",
+  "kommentar": "Én sittende hund der bare ansiktet endrer seg. Brukes som lag, ikke som hele figurer.",
+  "lag": {
+   "base": "r4c1",
+   "maske": "sitte-ansikt-maske.png",
+   "oyne_over_y": 84,
+   "hoyde_som": "sitt-1",
+   "kropp": "hd-kropp",
+   "oyne": {
+    "r1c1": "hd-oyne-halv",
+    "r1c3": "hd-oyne-lukket",
+    "r2c1": "hd-oyne-venstre",
+    "r2c4": "hd-oyne-hoyre"
+   },
+   "munn": {
+    "r4c2": "hd-munn-pes-2",
+    "r4c3": "hd-munn-pes-3",
+    "r4c4": "hd-munn-pes-4",
+    "r3c1": "hd-munn-slikk-1",
+    "r3c2": "hd-munn-slikk-2",
+    "r3c3": "hd-munn-slikk-3"
+   },
+   "leker": {
+    "leke-claude": "hd-leke-claude",
+    "leke-codex": "hd-leke-codex",
+    "ball-alene": "hd-leke-ball"
+   },
+   "leke_midt": [
+    78,
+    110
+   ],
+   "leke_bredde": 48,
+   "bakke": {
+    "ball-alene": {
+     "navn": "hd-ball-bakke",
+     "midt": [
+      140,
+      238
+     ],
+     "bredde": 34
+    }
+   }
+  }
  }
 }

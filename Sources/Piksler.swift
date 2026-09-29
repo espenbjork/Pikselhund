@@ -27,6 +27,36 @@ final class Piksler {
         return bilde
     }
 
+    private var lagbuffer: [String: NSImage] = [:]
+
+    /// Flere sprite-lag oppå hverandre, samme idé som `bilde(_:)` for
+    /// 32x32-rammene. Alle lagene ligger på samme lerret, så de legges rett
+    /// oppå hverandre. Mangler ett av lagene, blir svaret nil, og kalleren
+    /// faller tilbake til den gamle tegningen.
+    func spritebilde(_ lag: [String]) -> NSImage? {
+        let nokkel = lag.joined(separator: "+")
+        if let ferdig = lagbuffer[nokkel] { return ferdig }
+        let bilder = lag.compactMap { sprite($0) }
+        guard bilder.count == lag.count, let forste = bilder.first else { return nil }
+        if bilder.count == 1 { lagbuffer[nokkel] = forste; return forste }
+
+        // Tegnes én gang inn i et punktbilde, ikke på nytt for hver ramme.
+        let px = forste.representations.first?.pixelsWide ?? 384
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px,
+                                         bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                                         isPlanar: false, colorSpaceName: .deviceRGB,
+                                         bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        let flate = NSRect(x: 0, y: 0, width: px, height: px)
+        for b in bilder { b.draw(in: flate, from: .zero, operation: .sourceOver, fraction: 1) }
+        NSGraphicsContext.restoreGraphicsState()
+        let ut = NSImage(size: flate.size)
+        ut.addRepresentation(rep)
+        lagbuffer[nokkel] = ut
+        return ut
+    }
+
     /// Ett bilde etter rammenavn, fra det tegnesettet som er valgt. Sprite-fila
     /// heter det samme som den gamle ramma, så kallerne slipper å vite hvilket
     /// sett som er i bruk.
