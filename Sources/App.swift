@@ -177,21 +177,22 @@ final class Delegat: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func oppdaterLinje() {
-        guard let k = vindu?.visning.kvotevakt.kvote else { return }
-        menylinje?.button?.title = Kvotetekst.kort(k)
-        kvotevalg?.title = Kvotetekst.sammendrag(k)
+        guard let vakt = vindu?.visning.kvotevakt else { return }
+        menylinje?.button?.title = Kvotetekst.kort(vakt.kvote, vakt.anbefaling)
+        kvotevalg?.title = Kvotetekst.raad(vakt.kvote, vakt.anbefaling)
     }
 
     /// Menyen bygges om idet den åpnes, ellers ville tallene vært fra
     /// oppstarten. Alderen står ved hvert tall, aldri et tall alene.
     func menuNeedsUpdate(_ menu: NSMenu) {
-        guard let k = vindu?.visning.kvotevakt.kvote else { return }
+        guard let vakt = vindu?.visning.kvotevakt else { return }
+        let k = vakt.kvote
         if menu !== kvotemeny {
-            kvotevalg?.title = Kvotetekst.sammendrag(k)
+            kvotevalg?.title = Kvotetekst.raad(k, vakt.anbefaling)
             return
         }
         menu.removeAllItems()
-        for (tekst, overskrift) in Kvotetekst.linjer(k) {
+        for (tekst, overskrift) in Kvotetekst.linjer(k, vakt.anbefaling) {
             let p = NSMenuItem(title: tekst, action: nil, keyEquivalent: "")
             p.isEnabled = false
             if overskrift {

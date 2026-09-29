@@ -132,6 +132,9 @@ final class Hundevisning: NSView {
 
     /// Kvota fra forbruksvakt. Hunden leser den, og humøret følger uka.
     let kvotevakt = Kvotevakt()
+    /// Leka hunden holdt sist, så et bytte kan merkes. `nil` betyr at vi ennå
+    /// ikke har lest kvota en eneste gang.
+    private var sisteLek: Kvote.Anbefaling?
 
     init(piksler: Piksler) {
         self.piksler = piksler
@@ -291,6 +294,18 @@ final class Hundevisning: NSView {
             loepMot(dt)
 
         case .sitter:
+            // Ny anbefaling: hunden snurrer en runde og sitter igjen med den
+            // andre leka. Bytte teller bare mellom to ekte anbefalinger, så
+            // den ikke snurrer av at tallene kommer inn for første gang.
+            if kvotevakt.anbefaling != sisteLek {
+                let forrige = sisteLek
+                sisteLek = kvotevakt.anbefaling
+                if let f = forrige, f != .ingen, kvotevakt.anbefaling != .ingen {
+                    snurr()
+                    return
+                }
+            }
+
             // Er kvota brukt opp, er det ingenting å mase om. Da legger den
             // seg, men bare når du ikke akkurat har rørt noe.
             if kvotevakt.kvote.press == .tomt && stille > 20 { sovne(); return }
@@ -782,7 +797,9 @@ final class Hundevisning: NSView {
     // MARK: - Tegning
 
     private func lag() -> [String] {
-        if rolig { return ["kropp", "hale-midt"] }
+        // «Reduser bevegelse» slår av bevegelsene, ikke opplysningene. Leka
+        // står stille og skal derfor bli med.
+        if rolig { return ["kropp", "hale-midt"] + [kvotevakt.anbefaling.leke].compactMap { $0 } }
 
         switch tilstand {
         case .sover:
@@ -805,17 +822,28 @@ final class Hundevisning: NSView {
 
         var lag = [tilstand == .tigger ? "tigger" : "kropp",
                    Hundevisning.halerammer[haleIndeks]]
-        let harBallenIMunnen = tilstand == .ball && !ballPaaBakken
+        let leke = lekeramme()
+        let munnenFull = (tilstand == .ball && !ballPaaBakken) || leke != nil
         if tilstand == .ball { lag.append(ballPaaBakken ? "ball" : "i-munnen") }
         if tilstand == .sitter && poteOppe { lag.append("pote-opp") }
         if tid < blunkerTil { lag.append("blunk") }
         if slikkerNa {
             lag.append("slikk")
-        } else if tungeUte && !harBallenIMunnen {
+        } else if tungeUte && !munnenFull {
             lag.append("tunge")
         }
         if blikk < 0 { lag.append("blikk-venstre") } else if blikk > 0 { lag.append("blikk-hoyre") }
+        // Leka males til slutt, så den dekker tunga i stedet for omvendt.
+        if let leke { lag.append(leke) }
         return lag
+    }
+
+    /// Leka i munnen: den leverandøren det er mest igjen av. Oransje ball med
+    /// stjerne er Claude, grønn ring er ChatGPT. Leses rett fra kvotevakta og
+    /// ikke fra en teller, så den også vises når `--vis` har låst posituren.
+    private func lekeramme() -> String? {
+        guard tilstand == .sitter || tilstand == .tigger else { return nil }
+        return kvotevakt.anbefaling.leke
     }
 
     private func hundebilde() -> NSImage {

@@ -26,12 +26,50 @@ struct Kvote {
         }
     }
 
+    /// Hvem det er billigst å bruke nå. `ingen` betyr enten at begge er fulle,
+    /// eller at vi ikke har tall nok til å si det. Hunden bærer ingen leke da.
+    enum Anbefaling {
+        case claude, codex, ingen
+
+        var navn: String {
+            switch self {
+            case .claude: return "Claude"
+            case .codex: return "ChatGPT"
+            case .ingen: return "ingen"
+            }
+        }
+
+        /// Rammenavnet på leka hunden holder i munnen.
+        var leke: String? {
+            switch self {
+            case .claude: return "lek-claude"
+            case .codex: return "lek-codex"
+            case .ingen: return nil
+            }
+        }
+
+        var andre: Anbefaling {
+            switch self {
+            case .claude: return .codex
+            case .codex: return .claude
+            case .ingen: return .ingen
+            }
+        }
+    }
+
     struct Vindu {
         var prosent: Double?
         var nullstillesOmSek: Double?
         var alderSek: Double?
         /// Bare uka for Claude: det lokale forbruket siden fasiten ble hentet.
         var tilleggLokalt: Double?
+        /// «fasit», «anslag», «nullstilt» eller «for gammel».
+        var kilde: String?
+
+        /// Nullstillingstida regnes ut i det fila skrives. Er den negativ, er
+        /// vinduet for lengst rullet rundt, og tallet gjelder et vindu som
+        /// ikke finnes lenger.
+        var utloept: Bool { (nullstillesOmSek ?? 1) <= 0 }
 
         /// Fasit pluss det vi selv har sett siden. Aldri over hundre.
         var samlet: Double? {
@@ -52,13 +90,22 @@ struct Kvote {
     var codex: Leverandor?
     var lest: Date?
 
-    /// Presset styres av uka, med femtimersvinduet som sperre for om det er
-    /// lov å jobbe akkurat nå.
-    var press: Press {
-        var verst = 0.0
-        for l in [claude, codex].compactMap({ $0 }) {
-            verst = max(verst, l.uke.samlet ?? 0, l.femTimer.samlet ?? 0)
+    /// Hvor trangt det er hos en leverandør: det verste av de to vinduene.
+    func rom(_ hvem: Anbefaling) -> Double? {
+        let l: Leverandor?
+        switch hvem {
+        case .claude: l = claude
+        case .codex: l = codex
+        case .ingen: l = nil
         }
+        guard let l else { return nil }
+        return [l.uke.samlet, l.femTimer.samlet].compactMap { $0 }.max()
+    }
+
+    /// Presset styres av det verste vinduet hos begge, fordi hunden bare har
+    /// ett humør. Selve valget av leverandør ligger i `Kvotevakt.anbefaling`.
+    var press: Press {
+        let verst = [rom(.claude), rom(.codex)].compactMap { $0 }.max() ?? 0
         if verst >= 90 { return .tomt }
         if verst >= 75 { return .stramt }
         return .rolig
@@ -79,7 +126,15 @@ final class Kvotevakt {
     /// grunn til å skanne transkripsjonene oftere enn tallene endrer seg.
     private static let oppfriskning: TimeInterval = 150
 
+    /// Hunden bytter ikke leke for et par poengs forskjell. Uten dødsone ville
+    /// den skiftet fram og tilbake hver gang tallene rikket seg.
+    private static let vippegrense: Double = 8
+
+    /// Over dette er en leverandør uaktuell, uansett hva den andre står på.
+    private static let full: Double = 90
+
     private(set) var kvote = Kvote()
+    private(set) var anbefaling: Kvote.Anbefaling = .ingen
     /// Kalles når nye tall er lest, så menylinja slipper å vente på neste tikk.
     var vedNyeTall: (() -> Void)?
     private var sistKjort = Date.distantPast
@@ -123,34 +178,81 @@ final class Kvotevakt {
         var ny = Kvote()
         ny.lest = (try? FileManager.default.attributesOfItem(atPath: Kvotevakt.statusfil))?[.modificationDate] as? Date
         ny.claude = leverandor(rot["claude"], navn: "Claude")
-        ny.codex = leverandor(rot["codex"], navn: "Codex")
+        ny.codex = leverandor(rot["codex"], navn: "ChatGPT")
         kvote = ny
+        velgLeverandor()
         vedNyeTall?()
+    }
+
+    /// Den med mest plass vinner. Er begge fulle, vinner ingen.
+    private func velgLeverandor() {
+        let c = kvote.rom(.claude)
+        let g = kvote.rom(.codex)
+        switch (c, g) {
+        case (nil, nil):
+            anbefaling = .ingen
+        case (let a?, nil):
+            anbefaling = a >= Kvotevakt.full ? .ingen : .claude
+        case (nil, let b?):
+            anbefaling = b >= Kvotevakt.full ? .ingen : .codex
+        case (let a?, let b?):
+            if a >= Kvotevakt.full && b >= Kvotevakt.full { anbefaling = .ingen; return }
+            if a >= Kvotevakt.full { anbefaling = .codex; return }
+            if b >= Kvotevakt.full { anbefaling = .claude; return }
+            let onsket: Kvote.Anbefaling = a <= b ? .claude : .codex
+            let liten = abs(a - b) < Kvotevakt.vippegrense
+            if anbefaling != .ingen && onsket != anbefaling && liten { return }
+            anbefaling = onsket
+        }
     }
 
     private func leverandor(_ rå: Any?, navn: String) -> Kvote.Leverandor? {
         guard let d = rå as? [String: Any] else { return nil }
         var l = Kvote.Leverandor(navn: navn)
         l.plan = (d["plan"] as? String)?.capitalized
-        l.alderSek = d["alder_sek"] as? Double
+        // Claude oppgir alderen på fasiten, Codex på sin egen avlesning.
+        l.alderSek = (d["alder_sek"] as? Double) ?? (d["fasit_alder_sek"] as? Double)
         if let v = d["vinduer"] as? [String: Any] {
-            l.femTimer = vindu(v["5t"])
-            l.uke = vindu(v["uke"])
+            l.femTimer = vindu(v["5t"], kilde: "fasit")
+            l.uke = vindu(v["uke"], kilde: "fasit")
+        }
+
+        // En fasit har to tall med ulik holdbarhet. Femtimerstallet dør etter
+        // fem timer, ukestallet lever en uke. Et femtimerstall fra i forgårs
+        // sier ingenting om vinduet vi står i nå, og må ikke få bestemme hvem
+        // som anbefales.
+        if l.femTimer.utloept {
+            let est = ((d["estimat"] as? [String: Any])?["5t"] as? [String: Any])
+            let anslag = est?["prosent"] as? Double
+            // Anslaget teller sitt eget rullende vindu, så nullstillinga kan
+            // regnes ut av når vinduet startet.
+            let igjen = (est?["vindu_startet"] as? Double).map {
+                $0 + 5 * 3600 - Date().timeIntervalSince1970
+            }
+            l.femTimer = Kvote.Vindu(prosent: anslag ?? 0, nullstillesOmSek: igjen, alderSek: 0,
+                                     tilleggLokalt: nil,
+                                     kilde: anslag == nil ? "nullstilt" : "anslag")
+        }
+        // Uka kan ikke anslås lokalt, se cloud-okter-gjor-ukeskvota-umulig-a-
+        // telle-lokalt. Er ukesfasiten utløpt, vet vi rett og slett ikke.
+        if l.uke.utloept {
+            l.uke = Kvote.Vindu(kilde: "for gammel")
         }
         return (l.femTimer.prosent == nil && l.uke.prosent == nil) ? nil : l
     }
 
-    private func vindu(_ rå: Any?) -> Kvote.Vindu {
+    private func vindu(_ rå: Any?, kilde: String) -> Kvote.Vindu {
         guard let d = rå as? [String: Any] else { return Kvote.Vindu() }
         return Kvote.Vindu(prosent: d["prosent"] as? Double,
                            nullstillesOmSek: d["nullstilles_om_sek"] as? Double,
                            alderSek: d["alder_sek"] as? Double,
-                           tilleggLokalt: d["tillegg_lokalt_poeng"] as? Double)
+                           tilleggLokalt: d["tillegg_lokalt_poeng"] as? Double,
+                           kilde: d["kilde"] as? String ?? kilde)
     }
 }
 
 /// Tekstene i menylinja. Et tall står aldri alene: alderen hører med, fordi
-/// Codex-tallet er så gammelt som siste Codex-kjøring og kan være dager
+/// ChatGPT-tallet er så gammelt som siste Codex-kjøring og kan være dager
 /// gammelt uten å se rart ut.
 enum Kvotetekst {
 
@@ -170,45 +272,66 @@ enum Kvotetekst {
     }
 
     static func prosent(_ v: Kvote.Vindu) -> String {
-        guard let p = v.prosent else { return "?" }
+        guard let p = v.prosent else { return v.kilde ?? "?" }
         let grunn = "\(Int(p.rounded())) %"
         if let t = v.tilleggLokalt, t >= 0.1 {
-            return grunn + String(format: " + %.1f lokalt", t)
+            let tall = String(format: "%.1f", t).replacingOccurrences(of: ".", with: ",")
+            return grunn + " + \(tall) lokalt"
         }
         return grunn
     }
 
     /// En linje per vindu, pluss en overskrift per leverandør.
-    static func linjer(_ k: Kvote) -> [(tekst: String, overskrift: Bool)] {
+    static func linjer(_ k: Kvote, _ a: Kvote.Anbefaling) -> [(tekst: String, overskrift: Bool)] {
         var ut: [(String, Bool)] = []
+        ut.append((raad(k, a), true))
         for l in [k.claude, k.codex].compactMap({ $0 }) {
             let plan = l.plan.map { " \($0)" } ?? ""
-            ut.append(("\(l.navn)\(plan), avlest \(alder(l.alderSek))", true))
+            let via = l.navn == "ChatGPT" ? ", målt via Codex" : ""
+            ut.append(("\(l.navn)\(plan)\(via), avlest \(alder(l.alderSek))", true))
             for (merke, v) in [("5 timer", l.femTimer), ("uke", l.uke)] {
-                guard v.prosent != nil else { continue }
-                ut.append(("   \(merke): \(prosent(v)), nullstilles om \(varighet(v.nullstillesOmSek))", false))
+                var linje = "   \(merke): \(prosent(v))"
+                if v.prosent != nil, let n = v.nullstillesOmSek {
+                    linje += ", nullstilles om \(varighet(n))"
+                }
+                if let kilde = v.kilde, kilde != "fasit", v.prosent != nil {
+                    linje += " (\(kilde))"
+                }
+                ut.append((linje, false))
             }
         }
-        if ut.isEmpty {
+        if !k.harTall {
             ut.append(("Ingen kvotetall. Kjør forbruksvakt.py", true))
         }
         return ut
     }
 
-    /// Det som står i selve menylinja, ved siden av labben. Uka, fordi det er
-    /// den som binder.
-    static func kort(_ k: Kvote) -> String {
-        guard k.harTall else { return "" }
-        let uker = [k.claude?.uke.samlet, k.codex?.uke.samlet].compactMap { $0 }
-        guard let verst = uker.max() else { return "" }
-        return " \(Int(verst.rounded())) %"
+    /// Setningen hunden illustrerer med leka i munnen.
+    static func raad(_ k: Kvote, _ a: Kvote.Anbefaling) -> String {
+        guard k.harTall else { return "Kvote: ukjent" }
+        switch a {
+        case .ingen:
+            if k.press == .tomt { return "Begge kvotene er brukt opp" }
+            return "Vet ikke nok til å anbefale noen"
+        case .claude, .codex:
+            let min = k.rom(a).map { "\(Int($0.rounded())) %" } ?? "?"
+            let andre = k.rom(a.andre).map { "\(Int($0.rounded())) %" }
+            let hale = andre.map { ", \(a.andre.navn) står på \($0)" } ?? ""
+            return "Bruk \(a.navn) nå: \(min) brukt\(hale)"
+        }
     }
 
-    /// Kort oppsummering til toppen av menyen.
-    static func sammendrag(_ k: Kvote) -> String {
-        guard k.harTall else { return "Kvote: ukjent" }
-        let uker = [k.claude?.uke.samlet, k.codex?.uke.samlet].compactMap { $0 }
-        let verst = uker.max() ?? 0
-        return "Uke: \(Int(verst.rounded())) % brukt, \(k.press.beskrivelse)"
+    /// Det som står i selve menylinja, ved siden av labben: hvem du bør bruke,
+    /// og hvor mye av den som er brukt opp.
+    static func kort(_ k: Kvote, _ a: Kvote.Anbefaling) -> String {
+        guard k.harTall else { return "" }
+        switch a {
+        case .ingen:
+            let verst = [k.rom(.claude), k.rom(.codex)].compactMap { $0 }.max() ?? 0
+            return " tomt \(Int(verst.rounded())) %"
+        case .claude, .codex:
+            guard let p = k.rom(a) else { return " \(a.navn)" }
+            return " \(a.navn) \(Int(p.rounded())) %"
+        }
     }
 }
