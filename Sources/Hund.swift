@@ -58,6 +58,10 @@ final class Hundevisning: NSView {
     // Hale, øyne, tunge, pust
     private var haleIndeks = 0
     private var haleTid: Double = 0
+    /// Når logringa slutter, og når neste drag begynner. Brukes bare av den
+    /// nye tegningen, der hvert halebilde bytter ut hele figuren.
+    private var logrerTil: Double = 0
+    private var nesteLogring: Double = 12
     private var blunkerTil: Double = -1
     private var nesteBlunk: Double = 3
     private var tungeUte = true
@@ -114,6 +118,12 @@ final class Hundevisning: NSView {
     private let sporer = CommandLine.arguments.contains("--spor")
     private var sporTid: Double = 0
     private var sisteSporetTilstand: Sinnstilstand?
+    /// Hvor urolig hunden er: hvor mange ganger i sekundet det den viser
+    /// faktisk endrer seg. Skjermbilder kan ikke måle dette, og en skjerm som
+    /// sover kan ikke fotograferes i det hele tatt.
+    private var sisteUtseende = ""
+    private var uroTeller = 0
+    private var uroTid: Double = 0
 
     /// Vinduslaget under løpingen: sant når hunden skal ligge foran vinduene.
     var settNivaUnderveis: ((Bool) -> Void)?
@@ -223,6 +233,18 @@ final class Hundevisning: NSView {
     private func tikk(_ dt: Double) {
         tid += dt
         kvotevakt.tikk()
+
+        if sporer {
+            let utseende = (Innstillinger.nyTegning ? spriteramme() : lag().joined(separator: "+"))
+                + String(format: "|%.0f|%.0f", loft() * skala, (lening + vrikk()) * skala)
+            if utseende != sisteUtseende { sisteUtseende = utseende; uroTeller += 1 }
+            if tid - uroTid >= 5 {
+                print(String(format: "spor uro=%.1f endringer i sekundet, positur=%@",
+                             Double(uroTeller) / (tid - uroTid), sisteUtseende))
+                fflush(stdout)
+                uroTeller = 0; uroTid = tid
+            }
+        }
 
         if sporer && sisteSporetTilstand != tilstand {
             sisteSporetTilstand = tilstand
@@ -735,17 +757,33 @@ final class Hundevisning: NSView {
         let retning: CGFloat = speilvendt ? -1 : 1
         blikk = abs(dx) < 30 ? 0 : (dx * retning < 0 ? -1 : 1)
         // Kommer pekeren helt inntil, dytter hunden snuten mot den.
+        // Samme grunn som pusten: to hele ruter er et dytt på 32 ruter, men
+        // en synlig forflytning når figuren er tegnet mykt.
+        let mest: CGFloat = Innstillinger.nyTegning ? 1 : 2
         lening = avstand < Hundevisning.lenegrense
-            ? max(-2, min(2, dx * retning / 45))
+            ? max(-mest, min(mest, dx * retning / (45 * (3 - mest))))
             : 0
     }
 
     // MARK: - Løpende animasjon
 
     private func rullRammer(_ dt: Double) {
+        // Den gamle tegningen flytter bare halen når den logrer. Den nye
+        // bytter ut hele figuren for hvert halebilde, og en hale som logrer
+        // uavbrutt blir da uro over hele hunden i stedet for en hale som
+        // logrer. Derfor logrer den nye i korte drag, og sitter ellers stille.
+        let stillesittende = tilstand == .sitter || tilstand == .ball
+        if Innstillinger.nyTegning && stillesittende {
+            if spenning > 0.2 { logrerTil = max(logrerTil, tid + 0.6) }
+            if tid > nesteLogring {
+                logrerTil = tid + Double.random(in: 1.5...3)
+                nesteLogring = tid + Double.random(in: 18...45)
+            }
+        }
+        let logrer = !Innstillinger.nyTegning || !stillesittende || tid < logrerTil
         haleTid -= dt
         if haleTid <= 0 {
-            haleIndeks = (haleIndeks + 1) % Hundevisning.halerammer.count
+            haleIndeks = logrer ? (haleIndeks + 1) % Hundevisning.halerammer.count : 0
             haleTid = 0.19 - 0.12 * spenning
         }
 
@@ -955,6 +993,12 @@ final class Hundevisning: NSView {
         }
         if tilstand == .henter || tilstand == .hundehus { return 0 }
         if tilstand == .gaar && gaaFase == 1 { return sin(tid * 11) > 0 ? 1 : 0 }
+        // Et helt hakk opp og ned leser som pust på 32 ruter. På en tegning
+        // med jevne overganger leser det samme hakket som et hopp, så der
+        // puster den mykt og mye mindre.
+        // Ett punkt, over åtte sekunder. Mindre enn dette er usynlig, mer
+        // leser som at hunden sklir opp og ned.
+        if Innstillinger.nyTegning { return CGFloat((sin(tid * 0.78) + 1) * 0.08) }
         return sin(tid * 1.5) > 0.75 ? 1 : 0
     }
 
