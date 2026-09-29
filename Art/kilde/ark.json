@@ -1,0 +1,89 @@
+{
+ "sitte-front": {
+  "fil": "sitte-front.png",
+  "rutenett": "4x4",
+  "navn": {
+   "r1c1": "sitt-1",
+   "r1c2": "sitt-2",
+   "r1c3": "sitt-3",
+   "r1c4": "sitt-4",
+   "r2c4": "slikk",
+   "r3c4": "tigger",
+   "r4c4": "bakfra"
+  }
+ },
+ "gange-profil-a": {
+  "fil": "gange-profil-a.png",
+  "rutenett": "4x4",
+  "navn": {
+   "r1c1": "gaa-1",
+   "r1c2": "gaa-2",
+   "r1c3": "gaa-3",
+   "r1c4": "gaa-4"
+  }
+ },
+ "sitte-tunge": {
+  "fil": "sitte-tunge.png",
+  "rutenett": "4x4",
+  "navn": {}
+ },
+ "gange-profil-b": {
+  "fil": "gange-profil-b.png",
+  "rutenett": "4x4",
+  "navn": {}
+ },
+ "leikebukk-og-rygg": {
+  "fil": "leikebukk-og-rygg.png",
+  "rutenett": "4x4",
+  "navn": {
+   "r1c1": "leikebukk-1",
+   "r1c2": "leikebukk-2",
+   "r1c3": "leikebukk-3",
+   "r1c4": "leikebukk-4",
+   "r2c1": "sover-1",
+   "r2c2": "sover-2",
+   "r2c3": "sover-3",
+   "r2c4": "sover-4",
+   "r3c1": "mage-1",
+   "r3c2": "mage-2",
+   "r3c3": "mage-3",
+   "r3c4": "mage-4"
+  }
+ },
+ "leker-og-ball": {
+  "fil": "leker-og-ball.png",
+  "rutenett": "4x4",
+  "navn": {
+   "r1c1": "sitt-lek-claude-1",
+   "r1c2": "sitt-lek-claude-2",
+   "r1c3": "sitt-lek-codex-1",
+   "r1c4": "sitt-lek-codex-2",
+   "r2c1": "sitt-ball-1",
+   "r2c2": "sitt-ball-2",
+   "r2c3": "snus-1",
+   "r2c4": "snus-2",
+   "r3c1": "gaa-ball-1",
+   "r3c2": "gaa-ball-2",
+   "r3c3": "gaa-ball-3",
+   "r3c4": "gaa-ball-4",
+   "r4c1": "bakfra-gaa-1",
+   "r4c2": "bakfra-gaa-2",
+   "r4c3": "bakfra-gaa-3",
+   "r4c4": "bakfra-gaa-4"
+  }
+ },
+ "rekvisitter": {
+  "fil": "rekvisitter.png",
+  "rutenett": "4x2",
+  "navn": {
+   "r1c1": "hundehus",
+   "r1c2": "ball",
+   "r1c3": "godbit",
+   "r1c4": "hjerte",
+   "r2c1": "zzz-1",
+   "r2c2": "zzz-2",
+   "r2c3": "leke-claude",
+   "r2c4": "leke-codex"
+  }
+ }
+}

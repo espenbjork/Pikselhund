@@ -7,3 +7,6 @@ build/
 # Editor cruft
 *.swp
 *~
+
+# Avledet av Art/kilde, lages av tools/klipp-sprites.py
+Art/sprites/
