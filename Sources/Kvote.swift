@@ -10,6 +10,14 @@ import AppKit
 /// ukeskvota-rommer-ni-femtimersvinduer-ikke-trettitre: et fullt femtimersvindu
 /// koster rundt ti prosent av uka, så uka rommer bare ni eller ti av dem.
 /// Derfor følger hundens humør uka.
+/// At et vindu som var trangt har rullet rundt, og det er plass igjen.
+struct Nyperiode {
+    let hvem: Kvote.Anbefaling
+    let vindu: String
+    let aapnet: Date
+    var alder: TimeInterval { -aapnet.timeIntervalSinceNow }
+}
+
 struct Kvote {
 
     enum Press {
@@ -59,16 +67,20 @@ struct Kvote {
 
     struct Vindu {
         var prosent: Double?
-        var nullstillesOmSek: Double?
+        /// Selve øyeblikket vinduet nullstilles, ikke sekunder til det.
+        /// Sekunder regnet ut da fila ble skrevet drar med seg filas alder, og
+        /// da kan et vindu som står stille se ut som om det flytter seg.
+        var nullstillesKl: Date?
         var alderSek: Double?
         /// Bare uka for Claude: det lokale forbruket siden fasiten ble hentet.
         var tilleggLokalt: Double?
         /// «fasit», «anslag», «nullstilt» eller «for gammel».
         var kilde: String?
 
-        /// Nullstillingstida regnes ut i det fila skrives. Er den negativ, er
-        /// vinduet for lengst rullet rundt, og tallet gjelder et vindu som
-        /// ikke finnes lenger.
+        var nullstillesOmSek: Double? { nullstillesKl?.timeIntervalSinceNow }
+
+        /// Er nullstillinga passert, er vinduet for lengst rullet rundt, og
+        /// tallet gjelder et vindu som ikke finnes lenger.
         var utloept: Bool { (nullstillesOmSek ?? 1) <= 0 }
 
         /// Fasit pluss det vi selv har sett siden. Aldri over hundre.
@@ -133,8 +145,19 @@ final class Kvotevakt {
     /// Over dette er en leverandør uaktuell, uansett hva den andre står på.
     private static let full: Double = 90
 
+    /// Hvor trangt et vindu må ha vært, og hvor mye det må falle, for at det
+    /// å rulle rundt skal være verdt å si fra om.
+    private static let varTrangt: Double = 40
+    private static let maaFalle: Double = 15
+
+    /// Hvor lenge hunden maser om en ny periode, og hvor lenge menyen husker.
+    static let feiringstid: TimeInterval = 240
+    static let nyhetstid: TimeInterval = 3600
+
     private(set) var kvote = Kvote()
     private(set) var anbefaling: Kvote.Anbefaling = .ingen
+    private(set) var nyperiode: Nyperiode?
+    private var sistSett: [String: (prosent: Double, nullstilles: Date)] = [:]
     /// Kalles når nye tall er lest, så menylinja slipper å vente på neste tikk.
     var vedNyeTall: (() -> Void)?
     private var sistKjort = Date.distantPast
@@ -177,10 +200,14 @@ final class Kvotevakt {
 
         var ny = Kvote()
         ny.lest = (try? FileManager.default.attributesOfItem(atPath: Kvotevakt.statusfil))?[.modificationDate] as? Date
-        ny.claude = leverandor(rot["claude"], navn: "Claude")
-        ny.codex = leverandor(rot["codex"], navn: "ChatGPT")
+        // Sekundene i fila ble regnet ut da den ble skrevet, så de måles fra
+        // filas tid og ikke fra nå.
+        let grunnlag = ny.lest ?? Date()
+        ny.claude = leverandor(rot["claude"], navn: "Claude", grunnlag: grunnlag)
+        ny.codex = leverandor(rot["codex"], navn: "ChatGPT", grunnlag: grunnlag)
         kvote = ny
         velgLeverandor()
+        sporPerioder()
         vedNyeTall?()
     }
 
@@ -206,15 +233,47 @@ final class Kvotevakt {
         }
     }
 
-    private func leverandor(_ rå: Any?, navn: String) -> Kvote.Leverandor? {
+    /// Kjenner igjen at et vindu har rullet rundt.
+    ///
+    /// To ting må stemme samtidig. **Nullstillingsøyeblikket må ha flyttet seg
+    /// minst et halvt vindu framover**, som skiller en ekte rulling fra en ny
+    /// fasit som bare retter tallet midt i vinduet. **Og prosenten må ha falt
+    /// merkbart fra et tall som var trangt**, som skiller en rulling fra et
+    /// anslag som kryper framover uten fasit i bunn.
+    ///
+    /// At et vindu ruller fra 11 prosent er ingen nyhet, og da tier hunden.
+    private func sporPerioder() {
+        let vinduer: [(Kvote.Anbefaling, Kvote.Leverandor?)] = [(.claude, kvote.claude), (.codex, kvote.codex)]
+        for (hvem, l) in vinduer {
+            guard let l else { continue }
+            for (merke, v, lengde) in [("femtimersvindu", l.femTimer, 5.0 * 3600),
+                                       ("ukesvindu", l.uke, 7.0 * 86400)] {
+                let nokkel = "\(hvem.navn)-\(merke)"
+                guard let p = v.samlet, let kl = v.nullstillesKl else { continue }
+                // Merk at et vindu uten tall hopper over uten å røre
+                // grunnlinja. Da overlever den at ukesfasiten går ut på dato,
+                // og rullinga meldes når den nye fasiten kommer.
+                let forrige = sistSett[nokkel]
+                sistSett[nokkel] = (p, kl)
+                guard let f = forrige else { continue }
+                let rullet = kl.timeIntervalSince(f.nullstilles) > lengde / 2
+                let falt = f.prosent >= Kvotevakt.varTrangt && p <= f.prosent - Kvotevakt.maaFalle
+                if rullet && falt {
+                    nyperiode = Nyperiode(hvem: hvem, vindu: merke, aapnet: Date())
+                }
+            }
+        }
+    }
+
+    private func leverandor(_ rå: Any?, navn: String, grunnlag: Date) -> Kvote.Leverandor? {
         guard let d = rå as? [String: Any] else { return nil }
         var l = Kvote.Leverandor(navn: navn)
         l.plan = (d["plan"] as? String)?.capitalized
         // Claude oppgir alderen på fasiten, Codex på sin egen avlesning.
         l.alderSek = (d["alder_sek"] as? Double) ?? (d["fasit_alder_sek"] as? Double)
         if let v = d["vinduer"] as? [String: Any] {
-            l.femTimer = vindu(v["5t"], kilde: "fasit")
-            l.uke = vindu(v["uke"], kilde: "fasit")
+            l.femTimer = vindu(v["5t"], kilde: "fasit", grunnlag: grunnlag)
+            l.uke = vindu(v["uke"], kilde: "fasit", grunnlag: grunnlag)
         }
 
         // En fasit har to tall med ulik holdbarhet. Femtimerstallet dør etter
@@ -224,12 +283,12 @@ final class Kvotevakt {
         if l.femTimer.utloept {
             let est = ((d["estimat"] as? [String: Any])?["5t"] as? [String: Any])
             let anslag = est?["prosent"] as? Double
-            // Anslaget teller sitt eget rullende vindu, så nullstillinga kan
-            // regnes ut av når vinduet startet.
-            let igjen = (est?["vindu_startet"] as? Double).map {
-                $0 + 5 * 3600 - Date().timeIntervalSince1970
+            // Vindusstarten står stille gjennom hele vinduet og hopper fem
+            // timer når det ruller, så nullstillinga kan regnes ut av den.
+            let slutt = (est?["vindu_startet"] as? Double).map {
+                Date(timeIntervalSince1970: $0 + 5 * 3600)
             }
-            l.femTimer = Kvote.Vindu(prosent: anslag ?? 0, nullstillesOmSek: igjen, alderSek: 0,
+            l.femTimer = Kvote.Vindu(prosent: anslag ?? 0, nullstillesKl: slutt, alderSek: 0,
                                      tilleggLokalt: nil,
                                      kilde: anslag == nil ? "nullstilt" : "anslag")
         }
@@ -241,10 +300,11 @@ final class Kvotevakt {
         return (l.femTimer.prosent == nil && l.uke.prosent == nil) ? nil : l
     }
 
-    private func vindu(_ rå: Any?, kilde: String) -> Kvote.Vindu {
+    private func vindu(_ rå: Any?, kilde: String, grunnlag: Date) -> Kvote.Vindu {
         guard let d = rå as? [String: Any] else { return Kvote.Vindu() }
         return Kvote.Vindu(prosent: d["prosent"] as? Double,
-                           nullstillesOmSek: d["nullstilles_om_sek"] as? Double,
+                           nullstillesKl: (d["nullstilles_om_sek"] as? Double)
+                               .map { grunnlag.addingTimeInterval($0) },
                            alderSek: d["alder_sek"] as? Double,
                            tilleggLokalt: d["tillegg_lokalt_poeng"] as? Double,
                            kilde: d["kilde"] as? String ?? kilde)
@@ -281,9 +341,26 @@ enum Kvotetekst {
         return grunn
     }
 
+    /// «Nytt femtimersvindu hos ChatGPT, åpnet for 12 m siden», så lenge det
+    /// er nytt nok til å være en nyhet.
+    static func nyhet(_ v: Kvotevakt) -> String? {
+        guard let n = v.nyperiode, n.alder < Kvotevakt.nyhetstid else { return nil }
+        let naar = n.alder < 90 ? "akkurat nå" : "for \(varighet(n.alder)) siden"
+        return "Nytt \(n.vindu) hos \(n.hvem.navn), åpnet \(naar)"
+    }
+
+    /// Det som står i menyen over undermenyen. Er det en fersk nyhet, står
+    /// den der, ellers står rådet.
+    static func toppLinje(_ vakt: Kvotevakt) -> String {
+        nyhet(vakt) ?? raad(vakt.kvote, vakt.anbefaling)
+    }
+
     /// En linje per vindu, pluss en overskrift per leverandør.
-    static func linjer(_ k: Kvote, _ a: Kvote.Anbefaling) -> [(tekst: String, overskrift: Bool)] {
+    static func linjer(_ vakt: Kvotevakt) -> [(tekst: String, overskrift: Bool)] {
+        let k = vakt.kvote
+        let a = vakt.anbefaling
         var ut: [(String, Bool)] = []
+        if let n = nyhet(vakt) { ut.append((n, true)) }
         ut.append((raad(k, a), true))
         for l in [k.claude, k.codex].compactMap({ $0 }) {
             let plan = l.plan.map { " \($0)" } ?? ""
@@ -323,15 +400,20 @@ enum Kvotetekst {
 
     /// Det som står i selve menylinja, ved siden av labben: hvem du bør bruke,
     /// og hvor mye av den som er brukt opp.
-    static func kort(_ k: Kvote, _ a: Kvote.Anbefaling) -> String {
+    static func kort(_ vakt: Kvotevakt) -> String {
+        let k = vakt.kvote
+        let a = vakt.anbefaling
         guard k.harTall else { return "" }
+        // Mens nyheten er fersk står den i selve linja, ikke bare i menyen.
+        let fersk = (vakt.nyperiode?.alder ?? .infinity) < Kvotevakt.feiringstid
+        let merke = fersk ? " nytt vindu" : ""
         switch a {
         case .ingen:
             let verst = [k.rom(.claude), k.rom(.codex)].compactMap { $0 }.max() ?? 0
-            return " tomt \(Int(verst.rounded())) %"
+            return " tomt \(Int(verst.rounded())) %\(merke)"
         case .claude, .codex:
-            guard let p = k.rom(a) else { return " \(a.navn)" }
-            return " \(a.navn) \(Int(p.rounded())) %"
+            guard let p = k.rom(a) else { return " \(a.navn)\(merke)" }
+            return " \(a.navn) \(Int(p.rounded())) %\(merke)"
         }
     }
 }

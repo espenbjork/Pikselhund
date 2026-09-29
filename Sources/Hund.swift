@@ -135,6 +135,14 @@ final class Hundevisning: NSView {
     /// Leka hunden holdt sist, så et bytte kan merkes. `nil` betyr at vi ennå
     /// ikke har lest kvota en eneste gang.
     private var sisteLek: Kvote.Anbefaling?
+    /// Den nye perioden hunden allerede har reagert på, så den ikke maser om
+    /// den samme om igjen.
+    private var feiretPeriode: Date?
+    /// Hvor mange ganger den skal tigge igjen, og når neste gang er.
+    private var feiringRest = 0
+    private var nesteFeiring: Double = 0
+    /// Hvem vinduet åpnet seg hos. Styrer hvilken leke den holder mens den maser.
+    private var feirerFor: Kvote.Anbefaling = .ingen
 
     init(piksler: Piksler) {
         self.piksler = piksler
@@ -221,7 +229,9 @@ final class Hundevisning: NSView {
             let k = kvotevakt.kvote
             print("spor tilstand=\(tilstand.rawValue) press=\(k.press) "
                   + "uke=\(k.claude?.uke.samlet.map { String(format: "%.0f", $0) } ?? "?") "
-                  + "5t=\(k.claude?.femTimer.samlet.map { String(format: "%.0f", $0) } ?? "?")")
+                  + "5t=\(k.claude?.femTimer.samlet.map { String(format: "%.0f", $0) } ?? "?") "
+                  + "leke=\(lekeramme() ?? "-") stille=\(Int(sekunderStille()))"
+                  + (feiringRest > 0 ? " feirer=\(feiringRest)" : ""))
             fflush(stdout)
         }
 
@@ -266,6 +276,13 @@ final class Hundevisning: NSView {
     private func styrTilstand(stille: Double, avstand: CGFloat, dt: Double) {
         switch tilstand {
         case .sover:
+            // Et vindu som åpner seg er verdt å våkne for. Det er hele
+            // poenget: du skal få vite det uten å ha sett etter.
+            if fersketNyperiode() != nil {
+                vaakne()
+                startFeiring()
+                return
+            }
             // Musepekeren kommer nærmere, og den beveger seg akkurat nå.
             if avstand < Hundevisning.vekkeavstand && stille < 1.0 { vaakne() }
 
@@ -294,6 +311,21 @@ final class Hundevisning: NSView {
             loepMot(dt)
 
         case .sitter:
+            // Et vindu har åpnet seg. Da tigger den, tre ganger med et minutts
+            // mellomrom, og sovner ikke mens den holder på.
+            if fersketNyperiode() != nil { startFeiring() }
+            if feiringRest > 0 {
+                if tid > nesteFeiring {
+                    feiringRest -= 1
+                    nesteFeiring = tid + 60
+                    tigg()
+                    handlingTil = tid + 6
+                    nesteMas = tid + 120
+                    return
+                }
+                return
+            }
+
             // Ny anbefaling: hunden snurrer en runde og sitter igjen med den
             // andre leka. Bytte teller bare mellom to ekte anbefalinger, så
             // den ikke snurrer av at tallene kommer inn for første gang.
@@ -309,6 +341,7 @@ final class Hundevisning: NSView {
             // Er kvota brukt opp, er det ingenting å mase om. Da legger den
             // seg, men bare når du ikke akkurat har rørt noe.
             if kvotevakt.kvote.press == .tomt && stille > 20 { sovne(); return }
+
             if stille > Hundevisning.sovegrense { sovne(); return }
             if poteRest == 0 && slikkeRest == 0 && tid > nesteMas { mas() }
         }
@@ -351,6 +384,23 @@ final class Hundevisning: NSView {
         default: hentBallen()
         }
         nesteMas = tid + Double.random(in: 200...420)
+    }
+
+    /// En ny periode vi ennå ikke har mast om, og som fortsatt er fersk.
+    private func fersketNyperiode() -> Nyperiode? {
+        guard let n = kvotevakt.nyperiode,
+              n.alder < Kvotevakt.feiringstid,
+              n.aapnet != feiretPeriode else { return nil }
+        return n
+    }
+
+    private func startFeiring() {
+        guard let n = fersketNyperiode() else { return }
+        if sporer { print("spor NY PERIODE \(n.vindu) hos \(n.hvem.navn)"); fflush(stdout) }
+        feiretPeriode = n.aapnet
+        feirerFor = n.hvem
+        feiringRest = 3
+        nesteFeiring = 0
     }
 
     private func sovne() {
@@ -843,6 +893,9 @@ final class Hundevisning: NSView {
     /// ikke fra en teller, så den også vises når `--vis` har låst posituren.
     private func lekeramme() -> String? {
         guard tilstand == .sitter || tilstand == .tigger else { return nil }
+        // Mens den maser om en ny periode, holder den leka til den som åpnet
+        // seg. Ellers sier tigginga ikke hvem det gjelder.
+        if feiringRest > 0, let l = feirerFor.leke { return l }
         return kvotevakt.anbefaling.leke
     }
 

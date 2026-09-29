@@ -178,21 +178,20 @@ final class Delegat: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func oppdaterLinje() {
         guard let vakt = vindu?.visning.kvotevakt else { return }
-        menylinje?.button?.title = Kvotetekst.kort(vakt.kvote, vakt.anbefaling)
-        kvotevalg?.title = Kvotetekst.raad(vakt.kvote, vakt.anbefaling)
+        menylinje?.button?.title = Kvotetekst.kort(vakt)
+        kvotevalg?.title = Kvotetekst.toppLinje(vakt)
     }
 
     /// Menyen bygges om idet den åpnes, ellers ville tallene vært fra
     /// oppstarten. Alderen står ved hvert tall, aldri et tall alene.
     func menuNeedsUpdate(_ menu: NSMenu) {
         guard let vakt = vindu?.visning.kvotevakt else { return }
-        let k = vakt.kvote
         if menu !== kvotemeny {
-            kvotevalg?.title = Kvotetekst.raad(k, vakt.anbefaling)
+            kvotevalg?.title = Kvotetekst.toppLinje(vakt)
             return
         }
         menu.removeAllItems()
-        for (tekst, overskrift) in Kvotetekst.linjer(k, vakt.anbefaling) {
+        for (tekst, overskrift) in Kvotetekst.linjer(vakt) {
             let p = NSMenuItem(title: tekst, action: nil, keyEquivalent: "")
             p.isEnabled = false
             if overskrift {
@@ -202,7 +201,7 @@ final class Delegat: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             menu.addItem(p)
         }
-        if let lest = k.lest {
+        if let lest = vakt.kvote.lest {
             let f = DateFormatter(); f.dateFormat = "HH:mm"
             let p = NSMenuItem(title: "Avlest \(f.string(from: lest))", action: nil, keyEquivalent: "")
             p.isEnabled = false
