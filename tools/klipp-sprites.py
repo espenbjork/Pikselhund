@@ -24,6 +24,8 @@ from PIL import Image, ImageDraw
 HER = pathlib.Path(__file__).resolve().parent.parent
 KILDE = HER / "Art" / "kilde"
 UT = HER / "Art" / "sprites"
+# Hunden vises som mest 192 punkter bred, altså 384 piksler på en Retina-skjerm.
+MAAL = 384
 
 
 def komponenter(mask, w, h):
@@ -89,8 +91,8 @@ def figur(im, kol, rad, k, r, ned=2):
 def main():
     ark = json.loads((KILDE / "ark.json").read_text(encoding="utf-8"))
     UT.mkdir(exist_ok=True)
-    for gammel in UT.glob("*.png"): gammel.unlink()
-    fasit, kontakt = {}, []
+    for gammel in list(UT.glob("*.png")) + list(UT.glob("unavngitt/*.png")): gammel.unlink()
+    fasit, kontakt, raa = {}, [], []
     for navn, a in ark.items():
         if not a.get("rutenett"): continue
         kol, rad = (int(v) for v in a["rutenett"].split("x"))
@@ -102,10 +104,29 @@ def main():
                 rute = f"r{r+1}c{k+1}"
                 id = a.get("navn", {}).get(rute) or f"{navn}-{rute}"
                 bit = im.crop(boks)
-                bit.save(UT / f"{id}.png")
+                navngitt = rute in a.get("navn", {})
+                raa.append((id, bit, navngitt))
                 fasit[id] = {"ark": navn, "rute": rute, "boks": list(boks),
-                             "storrelse": [bit.width, bit.height]}
+                             "storrelse": [bit.width, bit.height], "navngitt": navngitt}
                 kontakt.append((id, bit))
+    # Alle figurene skal inn på samme lerret, ellers mister de størrelsen sin
+    # i forhold til hverandre. Hunden forankres nederst og midtstilt, så føttene
+    # står på samme linje enten den sitter eller går. Hjerter og z-er svever
+    # over hodet, og forankres øverst.
+    side = max(max(b.width, b.height) for _, b, _ in raa)
+    OVER = {"hjerte", "zzz", "zzz-2"}
+    for id, bit, navngitt in raa:
+        if not navngitt:
+            (UT / "unavngitt").mkdir(exist_ok=True)
+            bit.save(UT / "unavngitt" / f"{id}.png")
+            continue
+        lerret = Image.new("RGBA", (side, side), (0, 0, 0, 0))
+        x = (side - bit.width) // 2
+        y = 0 if id in OVER else side - bit.height
+        lerret.paste(bit, (x, y))
+        lerret.resize((MAAL, MAAL), Image.LANCZOS).save(UT / f"{id}.png")
+        fasit[id]["lerret"] = [x, y, side]
+    fasit["_lerret"] = {"side": side, "maal": MAAL}
     (UT / "sprites.json").write_text(json.dumps(fasit, indent=1, ensure_ascii=False), encoding="utf-8")
 
     B, KOL = 160, 12

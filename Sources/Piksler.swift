@@ -3,11 +3,37 @@ import AppKit
 /// Leser tegningen i Art/pikselhund.txt og gjør rammer om til bilder.
 /// Ett tegn i fila er én piksel. Rammer legges oppå hverandre i den
 /// rekkefølgen kalleren oppgir, og '.' slipper laget under gjennom.
-struct Piksler {
+final class Piksler {
     typealias Farge = (r: UInt8, g: UInt8, b: UInt8)
 
     let bredde: Int
     let hoyde: Int
+
+    /// Det nye tegnesettet: hele figurer som PNG, klippet av
+    /// tools/klipp-sprites.py og lagt i appen under «sprites». Alle ligger på
+    /// samme lerret, så de beholder størrelsen i forhold til hverandre, og
+    /// tegnes derfor inn i nøyaktig samme rute som de gamle 32x32-rammene.
+    private lazy var spritemappe: URL? = Bundle.main.url(forResource: "sprites", withExtension: nil)
+    private var spritebuffer: [String: NSImage] = [:]
+
+    var harSprites: Bool { spritemappe != nil }
+
+    func sprite(_ navn: String) -> NSImage? {
+        if let ferdig = spritebuffer[navn] { return ferdig }
+        guard let mappe = spritemappe,
+              let bilde = NSImage(contentsOf: mappe.appendingPathComponent(navn + ".png"))
+        else { return nil }
+        spritebuffer[navn] = bilde
+        return bilde
+    }
+
+    /// Ett bilde etter rammenavn, fra det tegnesettet som er valgt. Sprite-fila
+    /// heter det samme som den gamle ramma, så kallerne slipper å vite hvilket
+    /// sett som er i bruk.
+    func ramme(_ navn: String) -> NSImage {
+        if Innstillinger.nyTegning, let s = sprite(navn) { return s }
+        return bilde([navn])
+    }
     private let palett: [Character: Farge]
     private let rammer: [String: [[Character]]]
 

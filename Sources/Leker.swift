@@ -54,6 +54,7 @@ final class Rekvisittvindu: NSWindow {
 
     private let flate = Flate()
     private let ruter: CGFloat
+    private(set) var rammenavn = ""
 
     init(piksler: Piksler, ramme: String, skala: CGFloat) {
         self.ruter = CGFloat(piksler.bredde)
@@ -65,7 +66,8 @@ final class Rekvisittvindu: NSWindow {
         ignoresMouseEvents = true
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
-        flate.bilde = piksler.bilde([ramme])
+        self.rammenavn = ramme
+        flate.bilde = piksler.ramme(ramme)
         contentView = flate
         settSkala(skala)
     }
@@ -73,6 +75,11 @@ final class Rekvisittvindu: NSWindow {
     override var canBecomeKey: Bool { false }
 
     var skala: CGFloat { frame.width / ruter }
+
+    func settBilde(_ b: NSImage) {
+        flate.bilde = b
+        flate.needsDisplay = true
+    }
 
     func settSkala(_ ny: CGFloat) {
         setContentSize(NSSize(width: ruter * ny, height: ruter * ny))

@@ -64,6 +64,20 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 echo "==> Kopierer tegningen"
 cp "$HERE/Art/pikselhund.txt" "$RES/pikselhund.txt"
 
+# Det nye tegnesettet klippes ut av arkene i Art/kilde hver gang, så appen
+# aldri kan få en gammel utgave. Mangler Pillow, bygger vi uten, og menyvalget
+# «Ny tegning» blir grået ut.
+if python3 -c "import PIL" 2>/dev/null; then
+  echo "==> Klipper figurene"
+  python3 "$HERE/tools/klipp-sprites.py" >/dev/null
+  rm -rf "$RES/sprites"
+  mkdir -p "$RES/sprites"
+  cp "$HERE"/Art/sprites/*.png "$RES/sprites/" 2>/dev/null || true
+  rm -f "$RES/sprites/oversikt.png"
+else
+  echo "==> Uten Pillow, hopper over det nye tegnesettet"
+fi
+
 if [ -f "$HERE/AppIcon.icns" ]; then
   cp "$HERE/AppIcon.icns" "$RES/AppIcon.icns"
 else

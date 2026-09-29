@@ -149,6 +149,11 @@ final class Delegat: NSObject, NSApplicationDelegate, NSMenuDelegate {
         bak.state = Innstillinger.foran ? .off : .on
         meny.addItem(bak)
 
+        let tegning = punkt("Ny tegning", #selector(byttTegning), nokkel: "")
+        tegning.state = Innstillinger.nyTegning ? .on : .off
+        tegning.isEnabled = vindu?.harNyTegning ?? false
+        meny.addItem(tegning)
+
         let speil = punkt("Speilvend", #selector(byttSpeil), nokkel: "")
         speil.state = Innstillinger.speilvendt ? .on : .off
         meny.addItem(speil)
@@ -253,6 +258,12 @@ final class Delegat: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func byttNiva() {
         vindu?.settNiva(!Innstillinger.foran)
+        byggMenyerPaaNytt()
+    }
+
+    @objc private func byttTegning() {
+        Innstillinger.nyTegning.toggle()
+        vindu?.byttTegnesett()
         byggMenyerPaaNytt()
     }
 

@@ -32,8 +32,8 @@ final class Hundevisning: NSView {
 
     private let piksler: Piksler
     private var bildebuffer: [String: NSImage] = [:]
-    private let hjertebilde: NSImage
-    private let zbilde: NSImage
+    private var hjertebilde: NSImage
+    private var zbilde: NSImage
 
     /// Rader med luft over hunden, så hopp, hjerter og z-er får plass.
     static let hodeplass = 10
@@ -146,8 +146,8 @@ final class Hundevisning: NSView {
 
     init(piksler: Piksler) {
         self.piksler = piksler
-        self.hjertebilde = piksler.bilde(["hjerte"])
-        self.zbilde = piksler.bilde(["zzz"])
+        self.hjertebilde = piksler.ramme("hjerte")
+        self.zbilde = piksler.ramme("zzz")
         super.init(frame: .zero)
         wantsLayer = true
         start()
@@ -899,7 +899,46 @@ final class Hundevisning: NSView {
         return kvotevakt.anbefaling.leke
     }
 
+    /// Hvilken ferdig figur som vises i det nye tegnesettet. Det settet har
+    /// ingen lag: blunk, blikk og tunge finnes ikke som egne biter, så de
+    /// faller bort, og posituren velges hel.
+    private func spriteramme() -> String {
+        func hale(_ av: Int) -> Int { 1 + haleIndeks % av }
+        if rolig {
+            return kvotevakt.anbefaling.leke.map { $0 == "lek-claude" ? "sitt-lek-claude-1" : "sitt-lek-codex-1" } ?? "sitt-1"
+        }
+        switch tilstand {
+        case .sover:   return "sover-\(1 + Int(tid * 1.5) % 4)"
+        case .mage:    return "mage-\(1 + Int(tid * 1.5) % 4)"
+        // Fase 1 er pausen midt på turen, der hunden snuser. Uten dette gikk
+        // den på stedet hvil mens den sto stille.
+        case .gaar:    return gaaFase == 1 ? "snus-\(1 + Int(tid) % 2)" : "gaa-\(1 + gaaIndeks % 4)"
+        case .snurrer: return snurrIndeks % 2 == 0 ? "sitt-1" : "bakfra"
+        case .bukker:  return "leikebukk-\(1 + Int(tid * 5) % 4)"
+        case .henter, .hundehus:
+            return (harBall ? "gaa-ball-" : "gaa-") + "\(1 + gaaIndeks % 4)"
+        case .tigger:  return "tigger"
+        case .ball:    return ballPaaBakken ? "sitt-\(hale(4))" : "sitt-ball-\(hale(2))"
+        case .sitter:
+            if let l = lekeramme() {
+                return (l == "lek-claude" ? "sitt-lek-claude-" : "sitt-lek-codex-") + "\(hale(2))"
+            }
+            if slikkerNa { return "slikk" }
+            if poteOppe { return "pote-opp-\(hale(2))" }
+            return "sitt-\(hale(4))"
+        }
+    }
+
+    /// Kalles når tegnesettet byttes, så ingenting gammelt blir stående igjen.
+    func byttTegnesett() {
+        bildebuffer.removeAll()
+        hjertebilde = piksler.ramme("hjerte")
+        zbilde = piksler.ramme("zzz")
+        needsDisplay = true
+    }
+
     private func hundebilde() -> NSImage {
+        if Innstillinger.nyTegning, let s = piksler.sprite(spriteramme()) { return s }
         let lagnavn = lag()
         let nokkel = lagnavn.joined(separator: "+")
         if let ferdig = bildebuffer[nokkel] { return ferdig }
@@ -967,7 +1006,11 @@ final class Hundevisning: NSView {
         bilde.draw(in: NSRect(x: x, y: y, width: bredde, height: hoyde),
                    from: .zero, operation: .sourceOver, fraction: alfa,
                    respectFlipped: true,
-                   hints: [.interpolation: NSImageInterpolation.none])
+                   // Den gamle tegningen er 32 ruter og skal ikke glattes. Den
+                   // nye er 384 piksler og skaleres ned, og da er glatting
+                   // riktig.
+                   hints: [.interpolation: Innstillinger.nyTegning
+                           ? NSImageInterpolation.high : NSImageInterpolation.none])
     }
 
     // MARK: - Mus
@@ -1045,7 +1088,7 @@ final class Godbitvindu: NSWindow {
         ignoresMouseEvents = true
         level = .floating
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
-        flate.bilde = piksler.bilde(["godbit"])
+        flate.bilde = piksler.ramme("godbit")
         contentView = flate
         settSkala(skala)
     }
@@ -1054,6 +1097,11 @@ final class Godbitvindu: NSWindow {
 
     func settSkala(_ skala: CGFloat) {
         setContentSize(NSSize(width: ruter * skala, height: ruter * skala))
+    }
+
+    func settBilde(_ b: NSImage) {
+        flate.bilde = b
+        flate.needsDisplay = true
     }
 
     func vis(sekunder: Double = 2.8) {
@@ -1197,6 +1245,16 @@ final class Hundevindu: NSWindow {
     }
 
     /// Setter vinduslaget tilbake til det brukeren har valgt.
+    var harNyTegning: Bool { piksler.harSprites }
+
+    /// Bytter mellom den gamle tegningen og det nye settet, uten omstart.
+    func byttTegnesett() {
+        visning.byttTegnesett()
+        godbit.settBilde(piksler.ramme("godbit"))
+        ballen.settBilde(piksler.ramme(ballen.rammenavn))
+        huset.settBilde(piksler.ramme(huset.rammenavn))
+    }
+
     func gjenopprettNiva() { settNiva(Innstillinger.foran) }
 
     func settNiva(_ foran: Bool) {
@@ -1258,6 +1316,14 @@ final class Hundevindu: NSWindow {
 /// Alt som skal huskes mellom kjøringer.
 enum Innstillinger {
     private static let d = UserDefaults.standard
+
+    /// Det nye tegnesettet fra 29.09.2026. Av som standard, fordi det koster
+    /// blunk, blikk mot musepekeren og løftet pote: de fantes som egne lag i
+    /// den gamle tegningen, og det nye settet er hele figurer.
+    static var nyTegning: Bool {
+        get { d.bool(forKey: "nyTegning") }
+        set { d.set(newValue, forKey: "nyTegning") }
+    }
 
     static var skala: CGFloat {
         get { d.object(forKey: "skala") as? CGFloat ?? 3 }

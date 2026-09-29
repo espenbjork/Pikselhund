@@ -9,7 +9,10 @@
    "r1c4": "sitt-4",
    "r2c4": "slikk",
    "r3c4": "tigger",
-   "r4c4": "bakfra"
+   "r4c4": "bakfra",
+   "r3c1": "pote-opp-1",
+   "r3c2": "pote-opp-2",
+   "r4c2": "profil"
   }
  },
  "gange-profil-a": {
@@ -77,10 +80,10 @@
   "rutenett": "4x2",
   "navn": {
    "r1c1": "hundehus",
-   "r1c2": "ball",
+   "r1c2": "ball-alene",
    "r1c3": "godbit",
    "r1c4": "hjerte",
-   "r2c1": "zzz-1",
+   "r2c1": "zzz",
    "r2c2": "zzz-2",
    "r2c3": "leke-claude",
    "r2c4": "leke-codex"
