@@ -121,9 +121,9 @@ def ansiktslag(navn, a, lerret_side, sprites_json):
 
     Hver rute er tegnet på nytt av bildemodellen, så pelsen er litt ulik fra
     ramme til ramme. Å bla gjennom hele rammer ville derfor få hele hunden
-    til å skjelve. I stedet tas kroppen fra én ramme, og bare øyne og munn
+    til å skjelve. I stedet tas kroppen fra en ramme, og bare øyne og munn
     hentes fra de andre, gjennom en maske. Masken ligger ferdig i Art/kilde
-    og ble laget av hvor rammene varierer mest: to flekker ved øynene, én ved
+    og ble laget av hvor rammene varierer mest: to flekker ved øynene, en ved
     snute og munn. Se notatet en-generert-animasjon-trenger-en-kropp.
     """
     L = a["lag"]

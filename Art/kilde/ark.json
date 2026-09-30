@@ -91,7 +91,7 @@
  },
  "sitte-ansikt": {
   "fil": "sitte-ansikt.png",
-  "kommentar": "Én sittende hund der bare ansiktet endrer seg. Brukes som lag, ikke som hele figurer.",
+  "kommentar": "En sittende hund der bare ansiktet endrer seg. Brukes som lag, ikke som hele figurer.",
   "lag": {
    "base": "r4c1",
    "maske": "sitte-ansikt-maske.png",

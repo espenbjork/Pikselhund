@@ -1,9 +1,14 @@
 # Pikselhund
 
-En NES-hund som sitter på skrivebordet og logrer. Native macOS-app, ingen
-avhengigheter, bygget med `swiftc` uten Xcode-prosjekt.
+En pikselhund som sitter på skrivebordet og logrer, og som holder leka til den
+av Claude og ChatGPT du har mest kvote igjen på. Native macOS-app, bygget med
+`swiftc` uten Xcode-prosjekt.
 
-![Pikselhund](forhandsvisning.png)
+Den finnes i to tegninger, og «Ny tegning» i menyen bytter mellom dem:
+
+![Den nye tegningen](forhandsvisning-ny.png)
+
+![32x32-tegningen](forhandsvisning.png)
 
 ## Bygg og kjør
 
@@ -12,6 +17,30 @@ avhengigheter, bygget med `swiftc` uten Xcode-prosjekt.
 ```
 
 Appen har ikke ikon i Dock. Den bor i menylinja, under labben.
+
+## Hvem du bør bruke
+
+Hunden holder en leke i munnen. **Oransje ball med stjerne er Claude, grønn
+ring er ChatGPT.** Leka er den av dem du har mest kvote igjen på, målt som det
+verste av femtimersvinduet og uka hos hver. Menylinja sier det samme i tekst,
+for eksempel `ChatGPT 11 %`, og menyen under labben har begge, med tid til
+nullstilling og hvor gamle tallene er.
+
+Skifter svaret, snurrer hunden en runde og sitter igjen med den andre leka. Den
+bytter ikke for mindre enn 8 poengs forskjell, ellers ville den skiftet hver
+gang tallene rikket seg. Er begge over 90 prosent, bærer den ingenting og
+legger seg.
+
+**Den tigger når et vindu åpner seg.** Ruller et vindu som var trangt rundt,
+tigger den tre ganger med et minutts mellomrom og holder leka til den det
+gjelder. Sover den, våkner den. En rulling kjennes igjen på to ting samtidig:
+nullstillingen har flyttet seg minst et halvt vindu framover, og prosenten har
+falt minst 15 poeng fra minst 40. Hver for seg gir de falske utslag.
+
+Tallene kommer fra `forbruksvakt.py`, som hunden kjører selv hvert 150.
+sekund, og som leser Codex sine øktfiler og Claude sine transkripsjoner på
+maskinen. **Det skriptet er ikke offentlig.** Uten det bærer hunden ingen leke,
+og menyen sier «Kvote: ukjent». Resten virker som før.
 
 ## Hva hunden gjør
 
@@ -117,6 +146,48 @@ tilstandsstyringen.** Låsen i `--vis` skrur av tilstandsstyringen, så en telle
 som ligger der stopper, og posituren ser død ut. Feilen er gjort tre ganger i
 dette prosjektet: poteklapp, z-er og gangrammer.
 
+## Den nye tegningen
+
+Tegnet på nytt av ChatGPT i september 2026, som hele figurer i stedet for
+lag. Arkene ligger i `Art/kilde/`, og `tools/klipp-sprites.py` klipper dem til
+enkeltfigurer i `Art/sprites/`. Bygget gjør det selv, og trenger da Pillow.
+Mangler Pillow, bygges appen uten den nye tegningen, og menyvalget er grått.
+
+```bash
+python3 tools/klipp-sprites.py && open Art/sprites/oversikt.png
+```
+
+Alle figurene ligger på samme kvadratiske lerret, forankret nederst og
+midtstilt, så de tegnes i nøyaktig samme rute som 32x32-rammene. Der de svarer
+til hverandre, heter de det samme som de gamle rammene.
+
+**De røde og gule pikslene rundt figurene i arkene er ikke en frans.** De
+ligger der alfa er null, og synes bare i visninger som ignorerer alfa.
+
+**Den sittende hunden er bygget av lag**, slik 32x32-hunden er. En bildemodell
+tegner hver rute på nytt, så pelsen er litt ulik fra ramme til ramme, og å bla
+gjennom hele rammer får hunden til å skjelve. Derfor tas kroppen fra en ramme,
+og øyne, munn og leke hentes fra de andre gjennom masken i
+`Art/kilde/sitte-ansikt-maske.png`. Den ble laget av hvor rammene varierer
+mest.
+
+**Den nye tegningen er roligere med vilje.** Samme tomgangsanimasjon som gir liv
+til 32 ruter gir uro til en detaljert figur. Halen logrer derfor i korte drag,
+pusten er ett punkt, og søvnen ligger stille.
+
+**Den sittende hunden er i en annen stil enn resten**, rundere og gulere. Det
+synes når den reiser seg.
+
+## Feilsøking
+
+`--spor` teller også hvor mange ganger i sekundet det hunden viser endrer seg,
+fordi stillhet ikke kan fotograferes. `--foto <fil>` skriver det appen faktisk
+tegner til en PNG etter tre sekunder, også når skjermen sover:
+
+```bash
+./build/Pikselhund.app/Contents/MacOS/Pikselhund --vis sitter --foto /tmp/hund.png
+```
+
 ## Ikonet
 
 ```bash
@@ -130,10 +201,13 @@ kopierer det inn hvis det finnes.
 
 | fil | hva |
 |---|---|
-| `Art/pikselhund.txt` | all grafikk, 23 rammer |
-| `Sources/Piksler.swift` | leser tegningen, lager bilder |
+| `Art/pikselhund.txt` | 32x32-tegningen, 28 rammer |
+| `Art/kilde/` | arkene til den nye tegningen, og hva hver rute heter |
+| `Sources/Piksler.swift` | leser begge tegningene, lager bilder |
+| `Sources/Kvote.swift` | kvota fra forbruksvakt, hvem som anbefales |
 | `Sources/Hund.swift` | vindu, animasjon, mus, innstillinger |
 | `Sources/Leker.swift` | vinduer som plattformer, ball, sikte, hundehus |
 | `Sources/App.swift` | menylinje og meny |
 | `tools/forhandsvis.py` | rammene som PNG |
 | `tools/lag-ikon.py` | app-ikonet |
+| `tools/klipp-sprites.py` | klipper arkene til figurer og lag |

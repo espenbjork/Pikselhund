@@ -1,7 +1,7 @@
 import AppKit
 
 /// Leser tegningen i Art/pikselhund.txt og gjør rammer om til bilder.
-/// Ett tegn i fila er én piksel. Rammer legges oppå hverandre i den
+/// Ett tegn i fila er en piksel. Rammer legges oppå hverandre i den
 /// rekkefølgen kalleren oppgir, og '.' slipper laget under gjennom.
 final class Piksler {
     typealias Farge = (r: UInt8, g: UInt8, b: UInt8)
@@ -40,7 +40,7 @@ final class Piksler {
         guard bilder.count == lag.count, let forste = bilder.first else { return nil }
         if bilder.count == 1 { lagbuffer[nokkel] = forste; return forste }
 
-        // Tegnes én gang inn i et punktbilde, ikke på nytt for hver ramme.
+        // Tegnes en gang inn i et punktbilde, ikke på nytt for hver ramme.
         let px = forste.representations.first?.pixelsWide ?? 384
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px,
                                          bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
@@ -131,7 +131,7 @@ final class Piksler {
         return (UInt8((tall >> 16) & 0xFF), UInt8((tall >> 8) & 0xFF), UInt8(tall & 0xFF))
     }
 
-    /// Setter sammen rammene til ett bilde. Bildet er like stort som én ramme,
+    /// Setter sammen rammene til ett bilde. Bildet er like stort som en ramme,
     /// og skal alltid tegnes uten interpolering, ellers smøres pikslene ut.
     func bilde(_ lagnavn: [String]) -> NSImage {
         var bytes = [UInt8](repeating: 0, count: bredde * hoyde * 4)

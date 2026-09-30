@@ -36,7 +36,7 @@ enum Vindusflater {
     }
 }
 
-/// Et lite vindu som viser én ramme et sted på skjermen: ballen, hundehuset.
+/// Et lite vindu som viser en ramme et sted på skjermen: ballen, hundehuset.
 /// Klikk går alltid gjennom, så rekvisittene aldri kommer i veien.
 final class Rekvisittvindu: NSWindow {
 

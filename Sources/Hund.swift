@@ -737,7 +737,7 @@ final class Hundevisning: NSView {
 
     func leggDeg() { sovne() }
 
-    /// Låser hunden i én positur, for skjermbilder og feilsøking.
+    /// Låser hunden i en positur, for skjermbilder og feilsøking.
     func lasTil(_ ny: Sinnstilstand) {
         tilstand = ny
         laast = true
@@ -939,7 +939,7 @@ final class Hundevisning: NSView {
 
     /// Hva som vises i det nye tegnesettet, som en liste av lag.
     ///
-    /// Den sittende hunden er bygget slik den gamle 32x32-hunden var: én kropp
+    /// Den sittende hunden er bygget slik den gamle 32x32-hunden var: en kropp
     /// som aldri endrer seg, og øyne, munn og leke som egne lag oppå. Da kan
     /// den blunke og se mot musepekeren med leka i munnen, uten at resten av
     /// hunden skjelver. De andre posisjonene er fortsatt hele figurer.

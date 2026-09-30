@@ -18,7 +18,7 @@ GRESS = (0, 216, 0)       # NES $2A
 
 
 def ikonflate(px):
-    """Én kvadratisk ikonflate: himmel, bakke og hund, med runde hjørner."""
+    """En kvadratisk ikonflate: himmel, bakke og hund, med runde hjørner."""
     palett, rammer = les(HER / "Art" / "pikselhund.txt")
     hund = tegn(["kropp", "hale-opp", "tunge"], palett, rammer)
 
